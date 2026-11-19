@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Default" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Name>XComCoop</Name>
+    <Guid>148e3490-7914-411d-8ba2-8175baf05944</Guid>
+    <SchemaVersion>2.0</SchemaVersion>
+    <AssemblyName>XComCoop</AssemblyName>
+    <RootNamespace>XComCoop</RootNamespace>
+    <ProjectGuid>{2156D070-D4A3-4613-84A1-15630A7A1C6B}</ProjectGuid>
+    <SteamPublishID>3842636042</SteamPublishID>
+    <Title>XCOM 2 WotC Co-op</Title>
+    <Description>TEST BUILD - work in progress, not playable yet. Co-op campaign and tactical play for XCOM 2: War of the Chosen. Requires X2WOTCCommunityHighlander.</Description>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <OutputPath>bin\Debug\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Default' ">
+    <OutputPath>bin\Default\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="ReadMe.txt" />
+    <Content Include="ModPreview.jpg" />
+    <Content Include="Config\XComCoop.ini" />
+    <Content Include="Config\XComEditor.ini" />
+    <Content Include="Config\XComEngine.ini" />
+    <Content Include="Config\XComGame.ini" />
+    <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoop.uc" />
+    <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopTests.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_Config.uc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Config" />
+    <Folder Include="Src" />
+    <Folder Include="Src\XComCoop" />
+    <Folder Include="Src\XComCoop\Classes" />
+  </ItemGroup>
+  <PropertyGroup>
+    <SolutionRoot>$(MSBuildProjectDirectory)\..\</SolutionRoot>
+    <ScriptsDir>$(SolutionRoot).scripts\</ScriptsDir>
+    <BuildCommonRoot>$(ScriptsDir)X2ModBuildCommon\</BuildCommonRoot>
+  </PropertyGroup>
+  <Import Project="$(BuildCommonRoot)XCOM2.targets" />
+</Project>

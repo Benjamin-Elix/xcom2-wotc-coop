@@ -1,0 +1,30 @@
+# ModBuddy / Visual Studio
+.vs/
+*.suo
+*.user
+*.sdf
+*.opensdf
+*.VC.db
+*.cache
+bin/
+obj/
+
+# Compiled script and build artefacts
+*.u
+*.ucl
+BuildCache/
+
+# Logs and crash dumps
+*.log
+*.dmp
+
+# Machine-specific SDK/game paths for the VS Code build tasks
+.vscode/settings.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ModBuddy per-user solution options
+*.XCOM_suo

@@ -1,0 +1,30 @@
+* text=auto
+
+# Windows tools (ModBuddy, UCC) expect CRLF
+*.uc      text eol=crlf
+*.uci     text eol=crlf
+*.ini     text eol=crlf
+*.x2proj  text eol=crlf
+*.sln     text eol=crlf
+*.txt     text eol=crlf
+
+# Localization files are kept as UTF-8 in the repo; X2ModBuildCommon converts them
+# to UTF-16 (what the game needs) when building.
+*.int     text eol=crlf
+*.chn     text eol=crlf
+*.cht     text eol=crlf
+*.deu     text eol=crlf
+*.esn     text eol=crlf
+*.fra     text eol=crlf
+*.ita     text eol=crlf
+*.jpn     text eol=crlf
+*.kor     text eol=crlf
+*.pol     text eol=crlf
+*.rus     text eol=crlf
+*.ps1     text eol=crlf
+
+# Unreal packages and images
+*.upk     binary
+*.umap    binary
+*.jpg     binary
+*.png     binary
