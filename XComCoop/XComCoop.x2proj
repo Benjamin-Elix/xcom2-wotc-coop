@@ -32,6 +32,10 @@
     <Content Include="Src\XComCoop\Classes\XComCoop_CompatInfo.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Config.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_NetTest.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_Session.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_UILobby.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_UIShellListener.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_Util.uc" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Config" />

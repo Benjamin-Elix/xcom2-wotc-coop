@@ -105,9 +105,10 @@ function Join(string HostId)
 		return;
 	}
 
-	Address = ToSteamAddress(HostId);
+	Address = class'XComCoop_Util'.static.ToSteamAddress(HostId);
 	if (Address == "")
 	{
+		Say("Invalid host ID '" $ HostId $ "'. Use the hex form printed by CoopMyId.");
 		return;
 	}
 
@@ -551,90 +552,6 @@ static function string DescribeDifference(string Sent, string Received)
 }
 
 // --- Helpers -------------------------------------------------------------------------------
-
-/// Turns a host ID into the "steam.<SteamID64>" address the Steam net driver expects
-/// (format string "steam.%I64u" in XCom2.exe).
-static function string ToSteamAddress(string HostId)
-{
-	local string Decimal;
-
-	if (Left(HostId, 6) ~= "steam.")
-	{
-		return HostId;
-	}
-	if (Left(HostId, 2) ~= "0x")
-	{
-		HostId = Mid(HostId, 2);
-	}
-	// A SteamID64 is 17 decimal digits; the hex form from CoopMyId is shorter.
-	if (Len(HostId) == 17 && IsDigits(HostId))
-	{
-		return "steam." $ HostId;
-	}
-
-	Decimal = HexToDecimal(HostId);
-	if (Decimal == "")
-	{
-		Say("Invalid host ID '" $ HostId $ "'. Use the hex form printed by CoopMyId.");
-		return "";
-	}
-	return "steam." $ Decimal;
-}
-
-/// Converts a hex string of any length to decimal. UnrealScript ints are 32-bit, so this
-/// works on decimal digits instead. Returns "" for invalid input.
-static function string HexToDecimal(string Hex)
-{
-	local array<int> Digits;   // least significant first
-	local int i, j, Value, Carry;
-	local string Result;
-
-	if (Hex == "")
-	{
-		return "";
-	}
-
-	Digits.AddItem(0);
-	for (i = 0; i < Len(Hex); i++)
-	{
-		Carry = InStr("0123456789ABCDEF", Caps(Mid(Hex, i, 1)));
-		if (Carry < 0)
-		{
-			return "";
-		}
-		for (j = 0; j < Digits.Length; j++)
-		{
-			Value = Digits[j] * 16 + Carry;
-			Carry = Value / 10;
-			Digits[j] = Value - Carry * 10;
-		}
-		while (Carry > 0)
-		{
-			Digits.AddItem(Carry - (Carry / 10) * 10);
-			Carry = Carry / 10;
-		}
-	}
-
-	for (i = Digits.Length - 1; i >= 0; i--)
-	{
-		Result $= string(Digits[i]);
-	}
-	return Result;
-}
-
-static function bool IsDigits(string Text)
-{
-	local int i;
-
-	for (i = 0; i < Len(Text); i++)
-	{
-		if (InStr("0123456789", Mid(Text, i, 1)) < 0)
-		{
-			return false;
-		}
-	}
-	return Text != "";
-}
 
 static function int QueuedBytes(XComGameStateNetworkManager NetMgr)
 {

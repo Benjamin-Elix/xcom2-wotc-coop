@@ -165,5 +165,14 @@ Målt 20.11.2026, tidlig kampanje (1. mars 2035, 13 soldater): 1515 rammer, 898 
 like stort som lagringsfilen for samme kampanje (224 KB). De største lagringsfilene på maskinen er rundt 7,3 MB, så
 en sen kampanje er trolig 7–8 MB å sende.
 
+**Invitasjoner til Steam-lobbyer (funnet 20.11.2026):** spillets egen flerspiller bruker *game sessions*
+(`OnGameInviteAccepted` i `XComOnlineEventMgr.uc:3502`), ikke lobby-API-et. Lobby-API-et brukes bare av juksekommandoene.
+Logglinjene i `XCom2.exe` viser hvordan en godtatt lobbyinvitasjon håndteres (`OnSteamAcceptLobbyInvite`):
+«Triggering the lobby delegates» og «Creating the game information and firing autoinvite delegates».
+Det er uklart om begge kjøres, eller bare én av dem. Kjøres den siste, kan spillet prøve å bruke vanlig flerspiller
+(feilmelding eller hopp til MP-menyen) når invitasjonen godtas i Steam-overlayet. Derfor viser moden en egen
+dialog når invitasjonen *mottas* (`OnLobbyInvite` med `bAccepted=false`), og kaller `JoinLobby` selv.
+Testen med to PC-er må vise hva som skjer i begge tilfeller.
+
 **Test 3, parallelt + fletting:** krever kode. Bygg en minimal versjon av resultatsammendraget
 (én soldat får XP, ett loot-objekt) og flett det inn hos verten mens verten har bygget noe imens.

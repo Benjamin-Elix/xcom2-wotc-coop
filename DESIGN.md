@@ -101,6 +101,13 @@ Lobby, invitasjon, sjekk av mods og versjon.
   listen over aktive moder og DLC. Byggversjonen er git-commit pluss byggetidspunkt og skrives av `build.ps1`
   ved hvert bygg. Den fanger opp at én spiller ikke har fått siste Workshop-oppdatering.
 - Avvik i spillets byggversjon gir bare en advarsel. `bRequireIdenticalModList=false` gjør avvik i modlisten om til advarsler.
+- Flyten (`XComCoop_Session`, skjerm `XComCoop_UILobby`):
+  1. Verten trykker CO-OP i hovedmenyen. Det lager en Steam-lobby og starter spillserveren (Steam sockets).
+  2. Verten inviterer en venn fra listen på skjermen.
+  3. Vennen får et spørsmål i spillet, blir med i lobbyen og kobler til lobbyeieren.
+  4. Begge sender `XComCoop_CompatInfo`. Svaret er «klar», eller en liste over hva som er feil.
+  5. Lobbyen forteller bare hvem verten er. All spilltrafikk går gjennom `XComGameStateNetworkManager`.
+- Invitasjoner tas bare imot i hovedmenyen i fase 1. Oppstart av spillet fra en Steam-invitasjon kommer i fase 7.
 
 ### Fase 2: Strategisynk én vei
 Verten sender, klienten speiler.

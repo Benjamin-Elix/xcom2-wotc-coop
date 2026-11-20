@@ -18,9 +18,16 @@ var config int              ProtocolVersion;
 var config int              MaxPlayers;
 var config bool             bRequireIdenticalModList;
 var config array<string>    ModsIgnoredInCompatCheck;   // DLCNames
+var config int              NetPort;
+var config float            ConnectRetrySeconds;
+var config int              ConnectAttempts;
+var config bool             bLobbyVisibleToFriends;
 var config float            HeartbeatIntervalSeconds;
 var config float            DisconnectTimeoutSeconds;
 var config float            ReconnectWindowSeconds;     // 0 = no limit
+
+// --- User interface ---
+var config float            MainMenuButtonCheckSeconds;
 
 // --- Strategy and Avenger ---
 var config float            SoldierSoftLockTimeoutSeconds;

@@ -1,6 +1,50 @@
 ; Placeholders: %PLAYER = the other player's Steam name, %LOCAL / %REMOTE = your value / theirs,
 ; %MOD = name of a mod or DLC.
 
+[XComCoop_UIShellListener]
+strCoopButton="CO-OP"
+
+[XComCoop_UILobby]
+strTitle="CO-OP"
+strHostSubtitle="You are the host"
+strClientSubtitle="Joining a friend"
+strStateIdle="Not connected."
+strStateCreatingLobby="Creating the lobby..."
+strStateWaitingForPlayer="Lobby open. Invite a friend below."
+strStateJoiningLobby="Joining the lobby..."
+strStateConnecting="Connecting to the host..."
+strStateChecking="Connected. Checking versions and mods..."
+strStateReady="Connected and compatible."
+strStateFailed="Could not play together:"
+strReadyNextStep="Playing a campaign together comes in a later version of the mod."
+strHost="Host"
+strPlayer2="Player 2"
+strYou="you"
+strNobodyYet="waiting..."
+strInviteHeader="Invite a friend (click a name):"
+strNoFriendsOnline="No friends online."
+strPlayingXCOM="playing XCOM 2"
+strInvited="invited"
+strLeave="LEAVE"
+strRetry="TRY AGAIN"
+strRefresh="REFRESH"
+
+[XComCoop_Session]
+strCreateLobbyFailed="Could not create the Steam lobby."
+strJoinLobbyFailed="Could not join the Steam lobby."
+strServerFailed="Could not start the game server."
+strConnectFailed="Could not connect to the host."
+strConnectionLost="The connection to the host was lost."
+strPlayerLeft="%PLAYER left."
+strInviteSent="Invite sent to %PLAYER."
+strInviteFailed="Could not send the invite to %PLAYER."
+strSomeone="A friend"
+strInviteTitle="CO-OP INVITE"
+strInviteText="%PLAYER invites you to play XCOM 2 co-op."
+strInviteAccept="JOIN"
+strInviteDecline="DECLINE"
+strInviteNotInMenu="%PLAYER invites you to play co-op. Go to the main menu and accept the invite from Steam again to join."
+
 [XComCoop_CompatInfo]
 strOtherPlayer="The other player"
 strBadData="Could not read the compatibility info from the other player."
