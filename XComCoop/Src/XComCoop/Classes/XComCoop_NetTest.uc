@@ -14,11 +14,12 @@
 //           Console commands are in X2DownloadableContentInfo_XComCoopNetTest.
 //           Remove this class once phase 0 is done.
 //---------------------------------------------------------------------------------------
-class XComCoop_NetTest extends Object;
+class XComCoop_NetTest extends Object dependson(XComCoop_CompatInfo);
 
 // Remote command names. Both PCs must run the same build.
 const CMD_EXPECT_HISTORY = "XComCoopExpectHistory";
 const CMD_HISTORY_ACK = "XComCoopHistoryAck";
+const CMD_COMPAT = "XComCoopCompat";
 
 // Where CoopHistoryToFile writes. Lands under Documents\My Games\XCOM2 War of the Chosen\XComGame\
 // (as <name>.x2hist), not under the game folder as XComGameStateHistory.uc claims.
@@ -27,6 +28,7 @@ const HISTORY_FILE_NAME = "XComCoop_History";
 
 var bool bDelegatesAdded;
 var bool bJoined;
+var bool bCompatSent;
 var int ConnectAttemptsLeft;
 
 // Sender side
@@ -69,6 +71,7 @@ function Host()
 	}
 
 	AddDelegates();
+	bCompatSent = false;
 	ServerURL.Port = class'XComCoop_Config'.default.TestNetPort;
 	ServerURL.Op.AddItem("steamsockets");
 	bOk = NetMgr.CreateServer(ServerURL, Error);
@@ -110,6 +113,7 @@ function Join(string HostId)
 
 	AddDelegates();
 	bJoined = false;
+	bCompatSent = false;
 	ClientURL.Host = Address;
 	ClientURL.Port = class'XComCoop_Config'.default.TestNetPort;
 	ClientURL.Op.AddItem("steamsockets");
@@ -196,6 +200,7 @@ function Disconnect()
 {
 	`XCOMNETMANAGER.Disconnect();
 	bJoined = false;
+	bCompatSent = false;
 	ConnectAttemptsLeft = 0;
 	Say("CoopNetDisconnect: disconnected at " $ Clock());
 }
@@ -325,6 +330,15 @@ function HandleReceiveRemoteCommand(string Command, array<byte> RawParams)
 			CompareReceived();
 		}
 	}
+	else if (Command == CMD_COMPAT)
+	{
+		// The client sends first when it has joined; the host answers with its own.
+		if (!bCompatSent)
+		{
+			SendCompat();
+		}
+		CheckRemoteCompat(RawParams);
+	}
 	else if (Command == CMD_HISTORY_ACK)
 	{
 		Fp = class'XComGameStateNetworkManager'.static.GetCommandParam_String(RawParams);
@@ -348,6 +362,7 @@ function HandlePlayerJoined(string RequestURL, string Address, const UniqueNetId
 {
 	bJoined = true;
 	Say("CoopNet: connected at " $ Clock() $ ". Player " $ class'OnlineSubsystem'.static.UniqueNetIdToHexString(UniqueId) $ " address '" $ Address $ "'");
+	SendCompat();
 }
 
 function HandlePlayerLeft(const UniqueNetId UniqueId)
@@ -363,7 +378,101 @@ function HandleAcceptedConnection(int ConnectionIdx)
 function HandleConnectionClosed(int ConnectionIdx)
 {
 	bJoined = false;
+	bCompatSent = false;
 	Say("CoopNet: connection " $ ConnectionIdx $ " closed at " $ Clock());
+}
+
+// --- Compatibility check (phase 1) ---------------------------------------------------------
+// For now only reported, not enforced, so the test can go on even if the mod lists differ.
+
+function SendCompat()
+{
+	local array<byte> Data;
+
+	class'XComCoop_CompatInfo'.static.BuildLocal().WriteBytes(Data);
+	`XCOMNETMANAGER.SendRemoteCommand(CMD_COMPAT, Data);
+	bCompatSent = true;
+	Say("CoopNet: sent compatibility info (" $ Data.Length $ " bytes)");
+}
+
+function CheckRemoteCompat(array<byte> Data)
+{
+	local XComCoop_CompatInfo Remote;
+	local array<string> Problems, Warnings;
+	local bool bOk;
+
+	Remote = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	if (Remote != none)
+	{
+		Say("CoopNet: other PC: " $ Remote.Summary());
+	}
+	bOk = class'XComCoop_CompatInfo'.static.Compare(class'XComCoop_CompatInfo'.static.BuildLocal(), Remote, Problems, Warnings);
+	Report("CoopNet: compatibility check", bOk, Problems, Warnings);
+}
+
+/// Tests the check on one PC: write and read back the local info, then compare it with
+/// copies that have been changed on purpose.
+function CompatSelfTest()
+{
+	local XComCoop_CompatInfo LocalInfo, Copy;
+	local CompatModEntry FakeMod;
+	local array<byte> Data;
+	local array<string> Problems, Warnings;
+	local bool bOk;
+
+	LocalInfo = class'XComCoop_CompatInfo'.static.BuildLocal();
+	Say("CoopCompatSelfTest: local " $ LocalInfo.Summary());
+
+	// 1. Round trip through the wire format.
+	LocalInfo.WriteBytes(Data);
+	Say("CoopCompatSelfTest: written as " $ Data.Length $ " bytes");
+	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	if (Copy == none)
+	{
+		Say("CoopCompatSelfTest: 1/3 FAILED, could not read the bytes back");
+		return;
+	}
+	Say("CoopCompatSelfTest: read back " $ Copy.Summary());
+	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
+	Report("CoopCompatSelfTest: 1/3 identical copy, expect compatible", bOk, Problems, Warnings);
+
+	// 2. Other build, one mod missing, one extra mod, other engine version.
+	LocalInfo.WriteBytes(Data);
+	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	Copy.PlayerName = "TestPlayer";
+	Copy.BuildId = "test-build";
+	Copy.EngineVersion += 1;
+	if (Copy.Mods.Length > 0)
+	{
+		Copy.Mods.Remove(0, 1);
+	}
+	FakeMod.DLCName = "XComCoopFakeTestMod";
+	FakeMod.FriendlyName = "Fake Test Mod";
+	Copy.Mods.AddItem(FakeMod);
+	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
+	Report("CoopCompatSelfTest: 2/3 changed copy, expect 3 problems (build, 2 mods) and 1 warning (engine)", bOk, Problems, Warnings);
+
+	// 3. Other protocol: only the version can be read.
+	Copy.ProtocolVersion += 1;
+	Copy.WriteBytes(Data);
+	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
+	Report("CoopCompatSelfTest: 3/3 other protocol, expect 1 problem (protocol)", bOk, Problems, Warnings);
+}
+
+static function Report(string Title, bool bOk, const out array<string> Problems, const out array<string> Warnings)
+{
+	local int i;
+
+	Say(Title $ ": " $ (bOk ? "COMPATIBLE" : "NOT COMPATIBLE") $ " (" $ Problems.Length $ " problems, " $ Warnings.Length $ " warnings)");
+	for (i = 0; i < Problems.Length; i++)
+	{
+		Say("  problem: " $ (Problems[i] != "" ? Problems[i] : "(empty text, localization not loaded)"));
+	}
+	for (i = 0; i < Warnings.Length; i++)
+	{
+		Say("  warning: " $ (Warnings[i] != "" ? Warnings[i] : "(empty text, localization not loaded)"));
+	}
 }
 
 // --- Fingerprint ---------------------------------------------------------------------------

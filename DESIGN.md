@@ -97,6 +97,10 @@ Disse tallene er ikke bestemt ennå. De har foreløpige verdier i `XComCoop.ini`
 
 ### Fase 1: Lobby
 Lobby, invitasjon, sjekk av mods og versjon.
+- Sjekken (`XComCoop_CompatInfo`) sammenligner protokollversjon, byggversjon av moden, Highlander-versjon og
+  listen over aktive moder og DLC. Byggversjonen er git-commit pluss byggetidspunkt og skrives av `build.ps1`
+  ved hvert bygg. Den fanger opp at én spiller ikke har fått siste Workshop-oppdatering.
+- Avvik i spillets byggversjon gir bare en advarsel. `bRequireIdenticalModList=false` gjør avvik i modlisten om til advarsler.
 
 ### Fase 2: Strategisynk én vei
 Verten sender, klienten speiler.

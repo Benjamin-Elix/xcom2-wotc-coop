@@ -25,14 +25,17 @@
     <Content Include="Config\XComEditor.ini" />
     <Content Include="Config\XComEngine.ini" />
     <Content Include="Config\XComGame.ini" />
+    <Content Include="Localization\XComCoop.int" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoop.uc" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopNetTest.uc" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopTests.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_CompatInfo.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Config.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_NetTest.uc" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Config" />
+    <Folder Include="Localization" />
     <Folder Include="Src" />
     <Folder Include="Src\XComCoop" />
     <Folder Include="Src\XComCoop\Classes" />

@@ -8,7 +8,9 @@
 //  Host (in a campaign):      CoopNetHost, then CoopNetSendHistory once connected
 //  Other PC (main menu):      CoopNetJoin <host's hex ID from CoopMyId>
 //  Both:                      CoopNetStatus, CoopNetDisconnect
-//  Alone:                     CoopHistoryInfo, CoopHistoryToFile
+//  Alone:                     CoopHistoryInfo, CoopHistoryToFile, CoopCompatSelfTest
+//
+//  The compatibility check (phase 1) runs by itself when the client connects.
 //---------------------------------------------------------------------------------------
 class X2DownloadableContentInfo_XComCoopNetTest extends X2DownloadableContentInfo;
 
@@ -50,4 +52,9 @@ exec function CoopHistoryInfo()
 exec function CoopHistoryToFile()
 {
 	class'XComCoop_NetTest'.static.Get().HistoryToFile();
+}
+
+exec function CoopCompatSelfTest()
+{
+	class'XComCoop_NetTest'.static.Get().CompatSelfTest();
 }

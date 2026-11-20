@@ -116,15 +116,7 @@ exec function CoopP2PState(string SteamIdHex)
 
 static function Say(string Msg)
 {
-	local GameViewportClient Viewport;
-
-	`log(Msg,, 'XComCoop');
-
-	Viewport = class'Engine'.static.GetEngine().GameViewport;
-	if (Viewport != none && Viewport.ViewportConsole != none)
-	{
-		Viewport.ViewportConsole.OutputTextLine("[XComCoop] " $ Msg);
-	}
+	class'X2DownloadableContentInfo_XComCoop'.static.Say(Msg);
 }
 
 static function OnlineGameInterfaceXCom GetGameInterface()

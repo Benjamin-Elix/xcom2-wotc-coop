@@ -1,0 +1,12 @@
+; Placeholders: %PLAYER = the other player's Steam name, %LOCAL / %REMOTE = your value / theirs,
+; %MOD = name of a mod or DLC.
+
+[XComCoop_CompatInfo]
+strOtherPlayer="The other player"
+strBadData="Could not read the compatibility info from the other player."
+strProtocolMismatch="%PLAYER has an incompatible version of XCOM 2 WotC Co-op (protocol %REMOTE, yours is %LOCAL). Both players need the latest version."
+strBuildMismatch="%PLAYER has a different build of XCOM 2 WotC Co-op (yours: %LOCAL, theirs: %REMOTE). Restart Steam on both PCs so the latest Workshop update is downloaded."
+strHighlanderMismatch="%PLAYER has a different version of the Community Highlander (yours: %LOCAL, theirs: %REMOTE)."
+strEngineMismatch="%PLAYER runs a different game build (yours: %LOCAL, theirs: %REMOTE). This may still work."
+strModMissingRemote="%PLAYER does not have '%MOD' enabled."
+strModMissingLocal="You do not have '%MOD' enabled, but %PLAYER does."
