@@ -140,10 +140,30 @@ Alle cheat managers (`XComShellCheatManager`, `XComHeadquartersCheatManager`, `X
 5. Sjekk `Launch.log` hos begge for linjer merket `XCom_Online`. Logglinjer med `XCom_Online`/`XCom_Net` kan være skjult
    av `Suppress=` i spillets config. I så fall må det fjernes.
 
-**Test 2, send historikk (lite kode):** `MPCreateServer 7777 true` hos A, `MPCreateClient <A>` hos B, så
-`MPCheckConnections`, og til slutt `MPSendHistory` fra en strategi-lagring. Mottakeren må ha registrert
-`OnReceiveHistory`, ellers skjer ingenting synlig. Det krever en liten testklasse i moden.
-Ukjent: hvilken adresse klienten skal bruke over `steamsockets` (trolig Steam-ID, ikke IP).
+**Test 2, send historikk:** testklassen finnes nå, se
+`X2DownloadableContentInfo_XComCoopNetTest.uc` (kommandoer) og `XComCoop_NetTest.uc` (logikk).
+1. A (i en kampanje, på Avenger): `CoopNetHost`. Det kaller `CreateServer` med port `TestNetPort` og `steamsockets`.
+2. B (i hovedmenyen): `CoopNetJoin <As hex-ID fra CoopMyId>`. Det kaller `CreateClient`, og deretter
+   `ForceConnectionAttempt` hvert `TestConnectRetrySeconds` til `OnPlayerJoined` kommer, slik
+   `XComShellPresentationLayer.StartNetworkGame` / `OnSteamClientTimer` gjør (1103–1192).
+3. A: `CoopNetSendHistory`. A sender først et fingeravtrykk av historikken som fjernkommando, så `SendHistory`.
+   B svarer med fingeravtrykket av det som kom fram. A skriver ut tur-retur-tid og om avtrykkene er like.
+   Avtrykket består av antall rammer, antall objekter, summen og maksimum av ObjectID-ene, soldater, supplies og dato.
+
+Adressen klienten bruker over `steamsockets` er `steam.<SteamID64 i desimal>`. Formatstrengen `steam.%I64u`
+står i `XCom2.exe`, og `StartNetworkGame` deler `<host>:<port>` på kolon. `CoopNetJoin` regner hex-ID-en
+om til desimal selv, fordi `int` i UnrealScript bare er 32 bit.
+
+Mottakeren får historikken rett inn i sin egen `XCOMHISTORY`. Lobbyen bruker den direkte etterpå
+(`UIMPShell_Lobby.uc:820-824`, 1944–1949). B bør derfor stå i hovedmenyen og starte spillet på nytt etter testen.
+
+Alene: `CoopHistoryInfo` skriver ut fingeravtrykket. `CoopHistoryToFile` skriver historikken med `WriteHistoryToFile`
+til `Documents\My Games\XCOM2 War of the Chosen\XComGame\SaveData_Dev\XComCoop_History.x2hist`, ikke til spillmappen,
+selv om kommentaren i `XComGameStateHistory.uc` sier `appGameDir()`.
+
+Målt 20.11.2026, tidlig kampanje (1. mars 2035, 13 soldater): 1515 rammer, 898 objekter, **226 KB**. Det er omtrent
+like stort som lagringsfilen for samme kampanje (224 KB). De største lagringsfilene på maskinen er rundt 7,3 MB, så
+en sen kampanje er trolig 7–8 MB å sende.
 
 **Test 3, parallelt + fletting:** krever kode. Bygg en minimal versjon av resultatsammendraget
 (én soldat får XP, ett loot-objekt) og flett det inn hos verten mens verten har bygget noe imens.

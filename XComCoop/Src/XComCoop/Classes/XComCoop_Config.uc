@@ -46,3 +46,8 @@ var config array<RapidDeploymentTier> RapidDeploymentTiers;
 var config bool             bAllowIronman;
 var config bool             bEnablePings;
 var config array<name>      MissionSourcesRequiringBothPlayers;
+
+// --- Phase 0 tests (remove when phase 0 is done) ---
+var config int              TestNetPort;
+var config float            TestConnectRetrySeconds;
+var config int              TestConnectAttempts;
