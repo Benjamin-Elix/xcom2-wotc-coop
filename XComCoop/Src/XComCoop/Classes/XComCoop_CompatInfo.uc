@@ -33,6 +33,7 @@ var localized string strOtherPlayer;
 var localized string strBadData;
 var localized string strProtocolMismatch;
 var localized string strBuildMismatch;
+var localized string strBuildUncommitted;
 var localized string strHighlanderMismatch;
 var localized string strEngineMismatch;
 var localized string strModMissingRemote;
@@ -172,9 +173,15 @@ static function bool Compare(XComCoop_CompatInfo LocalInfo, XComCoop_CompatInfo 
 		return false;
 	}
 
-	if (LocalInfo.BuildId != RemoteInfo.BuildId)
+	// Two builds of the same commit only differ in build time, which is fine (each player may
+	// build from the repo). A build with uncommitted changes may differ, so that only warns.
+	if (BuildCommit(LocalInfo.BuildId) != BuildCommit(RemoteInfo.BuildId))
 	{
 		Problems.AddItem(Fill(default.strBuildMismatch, Player, LocalInfo.BuildId, RemoteInfo.BuildId, ""));
+	}
+	else if (LocalInfo.BuildId != RemoteInfo.BuildId && (IsDirtyBuild(LocalInfo.BuildId) || IsDirtyBuild(RemoteInfo.BuildId)))
+	{
+		Warnings.AddItem(Fill(default.strBuildUncommitted, Player, LocalInfo.BuildId, RemoteInfo.BuildId, ""));
 	}
 	if (LocalInfo.HighlanderVersion != RemoteInfo.HighlanderVersion)
 	{
@@ -242,6 +249,24 @@ static function bool IsIgnored(string DLCName)
 		}
 	}
 	return false;
+}
+
+/// The commit part of a build ID ("901d79f-dirty 20261121-214016Z" -> "901d79f").
+static function string BuildCommit(string Id)
+{
+	local int Space;
+
+	Space = InStr(Id, " ");
+	if (Space != INDEX_NONE)
+	{
+		Id = Left(Id, Space);
+	}
+	return Repl(Id, "-dirty", "");
+}
+
+static function bool IsDirtyBuild(string Id)
+{
+	return InStr(Id, "-dirty") != INDEX_NONE;
 }
 
 static function string Fill(string Msg, string Player, string LocalValue, string RemoteValue, string ModName)

@@ -423,7 +423,7 @@ function CheckRemoteCompat(array<byte> Data)
 /// copies that have been changed on purpose.
 function CompatSelfTest()
 {
-	local XComCoop_CompatInfo LocalInfo, Copy;
+	local XComCoop_CompatInfo LocalInfo, Copy, OtherBuild;
 	local CompatModEntry FakeMod;
 	local array<byte> Data;
 	local array<string> Problems, Warnings;
@@ -438,14 +438,28 @@ function CompatSelfTest()
 	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
 	if (Copy == none)
 	{
-		Say("CoopCompatSelfTest: 1/3 FAILED, could not read the bytes back");
+		Say("CoopCompatSelfTest: 1/5 FAILED, could not read the bytes back");
 		return;
 	}
 	Say("CoopCompatSelfTest: read back " $ Copy.Summary());
 	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
-	Report("CoopCompatSelfTest: 1/3 identical copy, expect compatible", bOk, Problems, Warnings);
+	Report("CoopCompatSelfTest: 1/5 identical copy, expect compatible", bOk, Problems, Warnings);
 
-	// 2. Other build, one mod missing, one extra mod, other engine version.
+	// 2. Same commit built at two different times (each player built from the repo).
+	LocalInfo.WriteBytes(Data);
+	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	OtherBuild = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
+	Copy.BuildId = "abc1234 20261121-100000Z";
+	OtherBuild.BuildId = "abc1234 20261121-200000Z";
+	bOk = class'XComCoop_CompatInfo'.static.Compare(Copy, OtherBuild, Problems, Warnings);
+	Report("CoopCompatSelfTest: 2/5 same commit, other build time, expect compatible with 0 warnings", bOk, Problems, Warnings);
+
+	// 3. Same commit, but one build has uncommitted changes.
+	Copy.BuildId = "abc1234-dirty 20261121-100000Z";
+	bOk = class'XComCoop_CompatInfo'.static.Compare(Copy, OtherBuild, Problems, Warnings);
+	Report("CoopCompatSelfTest: 3/5 same commit, one built with uncommitted changes, expect compatible with 1 warning", bOk, Problems, Warnings);
+
+	// 4. Other build, one mod missing, one extra mod, other engine version.
 	LocalInfo.WriteBytes(Data);
 	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
 	Copy.PlayerName = "TestPlayer";
@@ -459,14 +473,14 @@ function CompatSelfTest()
 	FakeMod.FriendlyName = "Fake Test Mod";
 	Copy.Mods.AddItem(FakeMod);
 	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
-	Report("CoopCompatSelfTest: 2/3 changed copy, expect 3 problems (build, 2 mods) and 1 warning (engine)", bOk, Problems, Warnings);
+	Report("CoopCompatSelfTest: 4/5 changed copy, expect 3 problems (build, 2 mods) and 1 warning (engine)", bOk, Problems, Warnings);
 
-	// 3. Other protocol: only the version can be read.
+	// 5. Other protocol: only the version can be read.
 	Copy.ProtocolVersion += 1;
 	Copy.WriteBytes(Data);
 	Copy = class'XComCoop_CompatInfo'.static.ReadBytes(Data);
 	bOk = class'XComCoop_CompatInfo'.static.Compare(LocalInfo, Copy, Problems, Warnings);
-	Report("CoopCompatSelfTest: 3/3 other protocol, expect 1 problem (protocol)", bOk, Problems, Warnings);
+	Report("CoopCompatSelfTest: 5/5 other protocol, expect 1 problem (protocol)", bOk, Problems, Warnings);
 }
 
 static function Report(string Title, bool bOk, const out array<string> Problems, const out array<string> Warnings)

@@ -101,6 +101,8 @@ Lobby, invitasjon, sjekk av mods og versjon.
 - Sjekken (`XComCoop_CompatInfo`) sammenligner protokollversjon, byggversjon av moden, Highlander-versjon og
   listen over aktive moder og DLC. Byggversjonen er git-commit pluss byggetidspunkt og skrives av `build.ps1`
   ved hvert bygg. Den fanger opp at én spiller ikke har fått siste Workshop-oppdatering.
+- Sjekken sammenligner bare commit-delen av byggversjonen, så to spillere kan bygge selv fra samme commit.
+  Er minst ett av byggene laget med ucommittede endringer (`-dirty`), gir ulik byggversjon en advarsel.
 - Avvik i spillets byggversjon gir bare en advarsel. `bRequireIdenticalModList=false` gjør avvik i modlisten om til advarsler.
 - Flyten (`XComCoop_Session`, skjerm `XComCoop_UILobby`):
   1. Verten trykker CO-OP i hovedmenyen. Det lager en Steam-lobby og starter spillserveren (Steam sockets).
