@@ -113,7 +113,7 @@ Lobby, invitasjon, sjekk av mods og versjon.
 ### Fase 2: Strategisynk én vei
 Verten sender, klienten speiler.
 - Første steg: klienten får en kopi av kampanjen.
-  1. Verten laster inn kampanjen, åpner co-op fra pausemenyen på Avengeren (egen CO-OP-knapp under menyen) og inviterer.
+  1. Verten laster inn kampanjen, velger CO-OP i pausemenyen på Avengeren (rett før EXIT GAME) og inviterer.
   2. Når begge er koblet til og sjekket, trykker verten START CO-OP. `XComCoop_Session.StartCampaign` sender
      fingeravtrykket og så hele historikken med `SendHistory`.
   3. Klienten bekrefter med sitt fingeravtrykk, setter `bPerformingStandardLoad` og laster Avengeren som om den lastet
