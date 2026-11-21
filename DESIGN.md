@@ -107,7 +107,9 @@ Lobby, invitasjon, sjekk av mods og versjon.
 - Flyten (`XComCoop_Session`, skjerm `XComCoop_UILobby`):
   1. Verten trykker CO-OP i hovedmenyen. Det lager en Steam-lobby og starter spillserveren (Steam sockets).
   2. Verten inviterer en venn fra listen på skjermen.
-  3. Vennen får et spørsmål i spillet, blir med i lobbyen og kobler til lobbyeieren.
+  3. Vennen får et spørsmål i spillet og kobler rett til den som sendte invitasjonen. Vennen blir ikke med i
+     Steam-lobbyen: spillets egen kode for Steam-lobbyer krasjer hos verten når et nytt medlem kommer inn (funnet
+     22.11.2026), og lobbyen trengs bare for å sende invitasjonen.
   4. Begge sender `XComCoop_CompatInfo`. Svaret er «klar», eller en liste over hva som er feil.
   5. Lobbyen forteller bare hvem verten er. All spilltrafikk går gjennom `XComGameStateNetworkManager`.
 - Invitasjoner tas bare imot i hovedmenyen i fase 1. Oppstart av spillet fra en Steam-invitasjon kommer i fase 7.

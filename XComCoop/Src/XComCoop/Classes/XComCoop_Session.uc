@@ -5,7 +5,8 @@
 //           (phase 2), and tells the UI when anything changes.
 //
 //  Host:   Host() -> CreateLobby -> start the game server (Steam sockets) -> Invite(friend)
-//  Client: invite received -> popup -> Join() -> JoinLobby -> connect to the lobby owner
+//  Client: invite received -> popup -> Join() -> connect to the player who sent the invite
+//          (the client does not join the Steam lobby; see Join)
 //  Both:   connected -> exchange XComCoop_CompatInfo -> Ready, or Failed with clear reasons
 //
 //  Phase 2, first step (the client gets a copy of the host's campaign):
@@ -145,6 +146,7 @@ var bool bResendWhenReady;          // host: send the whole campaign once strate
 
 // An invite that arrived while we were not in a lobby, waiting for the player's answer.
 var UniqueNetId PendingInviteLobbyId;
+var UniqueNetId PendingInviteFriendId;      // who sent it; the client connects to this player
 
 // Goes up by one on every change. The lobby screen polls it with its own timer. The session
 // lives for the whole game, so it must never hold a reference to a screen or other actor:
@@ -267,26 +269,28 @@ function Host()
 	}
 }
 
-/// Joins the lobby of an invite.
-function Join(UniqueNetId InLobbyId)
+/// Answers an invite: connects straight to the player who sent it.
+///
+/// The client does not join the Steam lobby. When a second member joins, the game's
+/// native Steam lobby code on the host crashes (access violation in XCom2.exe while
+/// handling the Steam lobby callback, 2026-11-22). The game's own multiplayer never
+/// uses Steam lobbies, only cheats do. The invite already says who the host is, and that
+/// is all the lobby was used for.
+function Join(UniqueNetId InLobbyId, UniqueNetId InviterId)
 {
-	local OnlineGameInterfaceXCom GameInterface;
-
 	if (IsActive())
 	{
 		Leave();
 	}
 	Reset();
 	Init();
-	GameInterface = class'XComCoop_Util'.static.GetGameInterface();
 
 	bIsHost = false;
 	LobbyId = InLobbyId;
-	SetState(eCoopState_JoiningLobby);
-	if (GameInterface == none || !GameInterface.JoinLobby(LobbyId))
-	{
-		Fail(strJoinLobbyFailed);
-	}
+	HostId = InviterId;
+	OtherPlayerName = class'XComCoop_Util'.static.GetFriendName(HostId);
+	Say("Session: answering the invite from " $ OtherName() $ " without joining the Steam lobby");
+	Connect();
 }
 
 /// Invites a friend to our lobby (host only).
@@ -462,11 +466,12 @@ function HandleLobbyInvite(UniqueNetId InLobbyId, UniqueNetId FriendId, bool bAc
 
 	if (bAccepted)
 	{
-		AcceptInvite(InLobbyId);
+		AcceptInvite(InLobbyId, FriendId);
 		return;
 	}
 
 	PendingInviteLobbyId = InLobbyId;
+	PendingInviteFriendId = FriendId;
 	ShowInviteDialog(FriendName);
 }
 
@@ -493,17 +498,18 @@ function HandleInviteDialog(Name eAction)
 {
 	local UniqueNetId EmptyId;
 
-	if (eAction == 'eUIAction_Accept' && PendingInviteLobbyId != EmptyId)
+	if (eAction == 'eUIAction_Accept' && PendingInviteFriendId != EmptyId)
 	{
-		AcceptInvite(PendingInviteLobbyId);
+		AcceptInvite(PendingInviteLobbyId, PendingInviteFriendId);
 	}
 	PendingInviteLobbyId = EmptyId;
+	PendingInviteFriendId = EmptyId;
 }
 
-function AcceptInvite(UniqueNetId InLobbyId)
+function AcceptInvite(UniqueNetId InLobbyId, UniqueNetId InviterId)
 {
 	class'XComCoop_UILobby'.static.Open();
-	Join(InLobbyId);
+	Join(InLobbyId, InviterId);
 }
 
 function ShowMessage(string Title, string Text)

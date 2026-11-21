@@ -278,3 +278,17 @@ gang, flyging og scanning på jordkloden, en forskning ferdig. `CoopRollback` fj
 merket, og skjermene viste riktige tall (supplies, forskning, Engineering). Spillet gikk videre uten feil, og en
 ny lagring lastet inn med samme fingeravtrykk. Datoen på skjermen er lokal tid der Avengeren står
 (`GetLocalizedTime`), så 1. mars kl. 00 UTC vises som 28. februar i Amerika.
+
+## Krasj når et nytt medlem blir med i Steam-lobbyen (22.11.2026)
+
+Første test med to PC-er: verten sto på Avenger med en åpen lobby. Da klienten trykket JOIN og kalte `JoinLobby`,
+krasjet spillet hos verten før moden fikk noen hendelse. Minidumpen (lest med et eget skript, ingen debugger på
+maskinen) viser `access violation` ved lesing av adresse `0xA0` i `XCom2.exe+0xA5EC04`. Kallstabelen går gjennom
+`steam_api64.dll` og spillets Steam-kode (`XCom2.exe+0xA70xxx`), altså spillets håndtering av Steams lobbyhendelse
+for et nytt medlem. Delegaten `OnLobbyMemberStatusUpdate` kalles fra UnrealScript etter den native koden, og den nådde
+aldri moden. Spillets flerspiller bruker ikke Steam-lobbyer (bare juksekommandoene gjør det), så den native koden er
+trolig aldri brukt med to medlemmer.
+
+Løsning: klienten blir ikke med i lobbyen. `OnLobbyInvite` gir både lobbyen og hvem som sendte invitasjonen, og
+klienten kobler rett til avsenderen. Verten bruker lobbyen bare til `InviteToLobby`. Godtas invitasjonen i
+Steam-overlayet, kan Steam selv melde klienten inn i lobbyen; bruk derfor dialogen i spillet.
