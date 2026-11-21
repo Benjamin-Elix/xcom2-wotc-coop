@@ -25,6 +25,7 @@ var config bool             bLobbyVisibleToFriends;
 var config float            HeartbeatIntervalSeconds;
 var config float            DisconnectTimeoutSeconds;
 var config float            ReconnectWindowSeconds;     // 0 = no limit
+var config float            CampaignLoadDelaySeconds;
 
 // --- User interface ---
 var config float            MainMenuButtonCheckSeconds;

@@ -29,6 +29,7 @@
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoop.uc" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopMergeTest.uc" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopNetTest.uc" />
+    <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopStrategyTest.uc" />
     <Content Include="Src\XComCoop\Classes\X2DownloadableContentInfo_XComCoopTests.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_CompatInfo.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Config.uc" />
@@ -36,6 +37,8 @@
     <Content Include="Src\XComCoop\Classes\XComCoop_MissionResult.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_NetTest.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Session.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_StrategyStartTest.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_UIPauseMenuListener.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UILobby.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UIShellListener.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Util.uc" />

@@ -8,6 +8,12 @@
 //---------------------------------------------------------------------------------------
 class X2DownloadableContentInfo_XComCoop extends X2DownloadableContentInfo;
 
+/// Runs for every load into strategy, including the client entering the host's campaign.
+static event OnLoadedSavedGameToStrategy()
+{
+	class'XComCoop_Session'.static.Get().OnLoadedToStrategy();
+}
+
 /// Prints what the compatibility check sends to the other player.
 exec function CoopCompatInfo()
 {

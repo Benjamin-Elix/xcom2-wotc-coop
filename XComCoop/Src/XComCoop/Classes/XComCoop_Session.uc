@@ -1,11 +1,17 @@
 //---------------------------------------------------------------------------------------
 //  FILE:    XComCoop_Session.uc
-//  PURPOSE: Phase 1: the co-op lobby. Owns the Steam lobby, the network connection and
-//           the compatibility check, and tells the UI when anything changes.
+//  PURPOSE: The co-op session. Owns the Steam lobby, the network connection, the
+//           compatibility check (phase 1) and handing the host's campaign to the client
+//           (phase 2), and tells the UI when anything changes.
 //
 //  Host:   Host() -> CreateLobby -> start the game server (Steam sockets) -> Invite(friend)
 //  Client: invite received -> popup -> Join() -> JoinLobby -> connect to the lobby owner
 //  Both:   connected -> exchange XComCoop_CompatInfo -> Ready, or Failed with clear reasons
+//
+//  Phase 2, first step (the client gets a copy of the host's campaign):
+//  Host on the Avenger, Ready: StartCampaign() -> announce fingerprint -> SendHistory
+//  Client: history arrives (it replaces XCOMHISTORY) -> confirm with its fingerprint ->
+//          load the Avenger as if loading a save (phase 0 test 4) -> tell the host it arrived
 //
 //  The lobby only tells the client who the host is; all game traffic goes through
 //  XComGameStateNetworkManager. The class default object (Get()) holds the state, so it
@@ -22,11 +28,20 @@ enum ECoopSessionState
 	eCoopState_Connecting,          // client: connecting to the host
 	eCoopState_Checking,            // both: connected, comparing versions and mods
 	eCoopState_Ready,               // both: connected and compatible
+	eCoopState_SendingCampaign,     // host: campaign sent, waiting for the client to confirm
+	eCoopState_LoadingCampaign,     // client: receiving the campaign, then loading the Avenger
+	eCoopState_InCampaign,          // both: the client has a copy of the host's campaign
 	eCoopState_Failed,              // see Problems
 };
 
-// Remote command for the compatibility check. Not the same name as the phase 0 test.
+// Remote commands. Not the same names as the phase 0 tests.
 const CMD_COMPAT = "XComCoopLobbyCompat";
+const CMD_CAMPAIGN = "XComCoopCampaign";            // host -> client: fingerprint of what follows
+const CMD_CAMPAIGN_ACK = "XComCoopCampaignAck";     // client -> host: fingerprint of what arrived
+const CMD_ARRIVED = "XComCoopArrived";              // client -> host: on the Avenger, still connected
+
+// Enters strategy the way a normal save load does (see XComCoop_StrategyStartTest).
+const STRATEGY_LOAD_COMMAND = "open Avenger_Root?game=XComGame.XComHeadQuartersGame?LoadingSave";
 
 var ECoopSessionState SessionState;
 var bool bIsHost;
@@ -42,6 +57,12 @@ var bool bNetDelegatesAdded;
 var bool bCompatSent;
 var bool bInLobby;
 var int ConnectAttemptsLeft;
+
+// Phase 2: handing over the campaign
+var string SentFingerprint;         // host
+var float CampaignSendTime;         // host, Util.Now() when sent
+var string ExpectedFingerprint;     // client, from CMD_CAMPAIGN
+var string ReceivedFingerprint;     // client, of the history that arrived
 
 // An invite that arrived while we were not in a lobby, waiting for the player's answer.
 var UniqueNetId PendingInviteLobbyId;
@@ -65,6 +86,14 @@ var localized string strInviteText;
 var localized string strInviteAccept;
 var localized string strInviteDecline;
 var localized string strInviteNotInMenu;
+var localized string strNotOnAvenger;
+var localized string strIronmanNotSupported;
+var localized string strCampaignReceived;
+var localized string strCampaignMismatch;
+var localized string strCampaignInvalid;
+var localized string strClientArrived;
+var localized string strArrivedClient;
+var localized string strConnectionLostLoading;
 
 static function XComCoop_Session Get()
 {
@@ -116,6 +145,7 @@ function AddNetDelegates()
 	bNetDelegatesAdded = true;
 	NetMgr = `XCOMNETMANAGER;
 	NetMgr.AddReceiveRemoteCommandDelegate(HandleRemoteCommand);
+	NetMgr.AddReceiveHistoryDelegate(HandleReceiveHistory);
 	NetMgr.AddPlayerJoinedDelegate(HandlePlayerJoined);
 	NetMgr.AddNotifyAcceptedConnectionDelegate(HandleAcceptedConnection);
 	// Without this the game returns to the main menu when the connection closes.
@@ -502,24 +532,51 @@ function HandleAcceptedConnection(int ConnectionIdx)
 function HandleConnectionClosed(int ConnectionIdx)
 {
 	Say("Session: connection closed in state " $ StateName());
-	switch (SessionState)
+	if (bIsHost)
 	{
-	case eCoopState_Checking:
-	case eCoopState_Ready:
-		if (bIsHost)
+		switch (SessionState)
 		{
+		case eCoopState_Checking:
+		case eCoopState_Ready:
+		case eCoopState_SendingCampaign:
+		case eCoopState_InCampaign:
 			// Keep the lobby open so the host can invite again.
-			Notices.AddItem(Repl(strPlayerLeft, "%PLAYER", OtherPlayerName != "" ? OtherPlayerName : strSomeone));
+			Notices.AddItem(Repl(strPlayerLeft, "%PLAYER", OtherName()));
 			OtherPlayerName = "";
 			bCompatSent = false;
 			StartServer();
 			SetState(eCoopState_WaitingForPlayer);
+			break;
+		default:
+			break;
 		}
-		else
+		return;
+	}
+
+	switch (SessionState)
+	{
+	case eCoopState_Checking:
+	case eCoopState_Ready:
+		Problems.AddItem(strConnectionLost);
+		Leave(true);
+		break;
+	case eCoopState_LoadingCampaign:
+		if (ReceivedFingerprint == "")
 		{
+			// Lost before the campaign arrived: nothing to load.
 			Problems.AddItem(strConnectionLost);
 			Leave(true);
 		}
+		else
+		{
+			// We have the campaign; load it anyway and report the lost connection.
+			Notices.AddItem(strConnectionLostLoading);
+			NotifyChanged();
+		}
+		break;
+	case eCoopState_InCampaign:
+		Notices.AddItem(strConnectionLost);
+		NotifyChanged();
 		break;
 	default:
 		break;
@@ -528,10 +585,28 @@ function HandleConnectionClosed(int ConnectionIdx)
 
 function HandleRemoteCommand(string Command, array<byte> RawParams)
 {
-	if (Command != CMD_COMPAT)
+	if (Command == CMD_COMPAT)
 	{
-		return;
+		HandleCompatCommand(RawParams);
 	}
+	else if (Command == CMD_CAMPAIGN)
+	{
+		HandleCampaignCommand(RawParams);
+	}
+	else if (Command == CMD_CAMPAIGN_ACK)
+	{
+		HandleCampaignAck(RawParams);
+	}
+	else if (Command == CMD_ARRIVED)
+	{
+		HandleArrived(RawParams);
+	}
+}
+
+// --- Compatibility check ---------------------------------------------------------------------
+
+function HandleCompatCommand(array<byte> RawParams)
+{
 	// The client's info can arrive before the host has seen the accepted connection.
 	if (bIsHost && SessionState == eCoopState_WaitingForPlayer)
 	{
@@ -547,8 +622,6 @@ function HandleRemoteCommand(string Command, array<byte> RawParams)
 	}
 	CheckCompat(RawParams);
 }
-
-// --- Compatibility check ---------------------------------------------------------------------
 
 function SendCompat()
 {
@@ -599,7 +672,205 @@ function CheckCompat(array<byte> Data)
 	}
 }
 
-// --- SessionState -----------------------------------------------------------------------------------
+// --- Phase 2: hand the campaign to the client ------------------------------------------------
+
+/// Host: can the campaign be sent now? Reason is empty when the button simply does not apply.
+function bool CanStartCampaign(out string Reason)
+{
+	local XComGameState_CampaignSettings Settings;
+
+	Reason = "";
+	if (!bIsHost || SessionState != eCoopState_Ready)
+	{
+		return false;
+	}
+	if (!class'XComCoop_Util'.static.IsInStrategy())
+	{
+		Reason = strNotOnAvenger;
+		return false;
+	}
+	Settings = XComGameState_CampaignSettings(`XCOMHISTORY.GetSingleGameStateObjectForClass(class'XComGameState_CampaignSettings', true));
+	if (Settings == none)
+	{
+		Reason = strNotOnAvenger;
+		return false;
+	}
+	if (Settings.bIronmanEnabled && !class'XComCoop_Config'.default.bAllowIronman)
+	{
+		Reason = strIronmanNotSupported;
+		return false;
+	}
+	return true;
+}
+
+/// Host: sends the whole campaign. The client confirms with CMD_CAMPAIGN_ACK.
+function StartCampaign()
+{
+	local XComGameStateNetworkManager NetMgr;
+	local array<byte> Params;
+	local string Reason;
+
+	if (!CanStartCampaign(Reason))
+	{
+		if (Reason != "")
+		{
+			Notices.AddItem(Reason);
+			NotifyChanged();
+		}
+		return;
+	}
+
+	NetMgr = `XCOMNETMANAGER;
+	SentFingerprint = class'XComCoop_Util'.static.HistoryFingerprint(`XCOMHISTORY);
+	class'XComGameStateNetworkManager'.static.AddCommandParam_String(SentFingerprint, Params);
+	NetMgr.SendRemoteCommand(CMD_CAMPAIGN, Params);
+	CampaignSendTime = class'XComCoop_Util'.static.Now();
+	NetMgr.SendHistory(`XCOMHISTORY, `XEVENTMGR);
+	Say("Session: campaign sent to " $ OtherName() $ ", fingerprint " $ SentFingerprint);
+	SetState(eCoopState_SendingCampaign);
+}
+
+/// Client: the host announces the campaign that follows.
+function HandleCampaignCommand(array<byte> RawParams)
+{
+	if (bIsHost || SessionState != eCoopState_Ready)
+	{
+		return;
+	}
+	ExpectedFingerprint = class'XComGameStateNetworkManager'.static.GetCommandParam_String(RawParams);
+	Say("Session: the host is sending the campaign: " $ ExpectedFingerprint);
+	SetState(eCoopState_LoadingCampaign);
+}
+
+/// Client: the campaign arrived. The network manager has already put it in XCOMHISTORY.
+function HandleReceiveHistory(XComGameStateHistory InHistory, X2EventManager EventManager)
+{
+	local array<byte> Params;
+
+	if (bIsHost || (SessionState != eCoopState_LoadingCampaign && SessionState != eCoopState_Ready))
+	{
+		Say("Session: ignored a history in state " $ StateName());
+		return;
+	}
+	if (InHistory != none && InHistory != `XCOMHISTORY)
+	{
+		Say("Session: WARNING the received history is not XCOMHISTORY");
+	}
+
+	ReceivedFingerprint = class'XComCoop_Util'.static.HistoryFingerprint(`XCOMHISTORY);
+	Say("Session: campaign received, fingerprint " $ ReceivedFingerprint);
+	if (ExpectedFingerprint != "" && ExpectedFingerprint != ReceivedFingerprint)
+	{
+		Say("Session: fingerprints DIFFER " $ class'XComCoop_Util'.static.DescribeDifference(ExpectedFingerprint, ReceivedFingerprint));
+	}
+
+	class'XComGameStateNetworkManager'.static.AddCommandParam_String(ReceivedFingerprint, Params);
+	`XCOMNETMANAGER.SendRemoteCommand(CMD_CAMPAIGN_ACK, Params);
+
+	if (SessionState != eCoopState_LoadingCampaign)
+	{
+		SetState(eCoopState_LoadingCampaign);
+	}
+	else
+	{
+		NotifyChanged();
+	}
+
+	// Give the confirmation a moment to go out before the map load.
+	class'Engine'.static.GetCurrentWorldInfo().SetTimer(class'XComCoop_Config'.default.CampaignLoadDelaySeconds, false, nameof(EnterCampaign), self);
+}
+
+/// Client: loads the Avenger from the received campaign, as if loading a save.
+function EnterCampaign()
+{
+	local PlayerController PC;
+
+	if (bIsHost || SessionState != eCoopState_LoadingCampaign)
+	{
+		return;
+	}
+	if (`XCOMHISTORY.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom', true) == none)
+	{
+		Problems.AddItem(strCampaignInvalid);
+		Leave(true);
+		return;
+	}
+	PC = class'WorldInfo'.static.GetWorldInfo().GetALocalPlayerController();
+	if (PC == none)
+	{
+		Say("Session: no player controller, cannot load the campaign");
+		return;
+	}
+	Say("Session: loading the host's campaign: " $ STRATEGY_LOAD_COMMAND);
+	`ONLINEEVENTMGR.bPerformingStandardLoad = true;
+	PC.ConsoleCommand(STRATEGY_LOAD_COMMAND);
+}
+
+/// Called from X2DownloadableContentInfo_XComCoop.OnLoadedSavedGameToStrategy.
+function OnLoadedToStrategy()
+{
+	local array<byte> Params;
+	local string Fp;
+
+	if (bIsHost || SessionState != eCoopState_LoadingCampaign)
+	{
+		return;
+	}
+	Fp = class'XComCoop_Util'.static.HistoryFingerprint(`XCOMHISTORY);
+	Notices.AddItem(Repl(strArrivedClient, "%PLAYER", OtherName()));
+	if (class'XComCoop_Util'.static.IsConnected())
+	{
+		class'XComGameStateNetworkManager'.static.AddCommandParam_String(Fp, Params);
+		`XCOMNETMANAGER.SendRemoteCommand(CMD_ARRIVED, Params);
+		Say("Session: on the Avenger and still connected to the host. fingerprint " $ Fp);
+	}
+	else
+	{
+		Notices.AddItem(strConnectionLostLoading);
+		Say("Session: on the Avenger, but the connection to the host is closed. fingerprint " $ Fp);
+	}
+	SetState(eCoopState_InCampaign);
+}
+
+/// Host: the client confirms what arrived.
+function HandleCampaignAck(array<byte> RawParams)
+{
+	local string Fp, Seconds;
+
+	if (!bIsHost || SessionState != eCoopState_SendingCampaign)
+	{
+		return;
+	}
+	Fp = class'XComGameStateNetworkManager'.static.GetCommandParam_String(RawParams);
+	Seconds = class'XComCoop_Util'.static.FormatSeconds(class'XComCoop_Util'.static.Now() - CampaignSendTime);
+	Say("Session: " $ OtherName() $ " confirmed the campaign after " $ Seconds $ " s (round trip)");
+	if (Fp == SentFingerprint)
+	{
+		Say("Session: fingerprints MATCH");
+		Notices.AddItem(Repl(Repl(strCampaignReceived, "%PLAYER", OtherName()), "%SECONDS", Seconds));
+	}
+	else
+	{
+		Say("Session: fingerprints DIFFER " $ class'XComCoop_Util'.static.DescribeDifference(SentFingerprint, Fp));
+		Warnings.AddItem(Repl(strCampaignMismatch, "%PLAYER", OtherName()));
+	}
+	SetState(eCoopState_InCampaign);
+}
+
+/// Host: the client is on the Avenger and the connection survived its map load.
+function HandleArrived(array<byte> RawParams)
+{
+	if (!bIsHost)
+	{
+		return;
+	}
+	Say("Session: " $ OtherName() $ " is on the Avenger, the connection survived the map load. fingerprint "
+		$ class'XComGameStateNetworkManager'.static.GetCommandParam_String(RawParams));
+	Notices.AddItem(Repl(strClientArrived, "%PLAYER", OtherName()));
+	NotifyChanged();
+}
+
+// --- SessionState ----------------------------------------------------------------------------
 
 function SetState(ECoopSessionState NewState)
 {
@@ -611,6 +882,11 @@ function SetState(ECoopSessionState NewState)
 function string StateName()
 {
 	return string(GetEnum(Enum'ECoopSessionState', SessionState));
+}
+
+function string OtherName()
+{
+	return OtherPlayerName != "" ? OtherPlayerName : strSomeone;
 }
 
 function Fail(string Reason)
@@ -634,6 +910,10 @@ function Reset()
 	Warnings.Length = 0;
 	Notices.Length = 0;
 	ConnectAttemptsLeft = 0;
+	SentFingerprint = "";
+	CampaignSendTime = 0;
+	ExpectedFingerprint = "";
+	ReceivedFingerprint = "";
 }
 
 function NotifyChanged()

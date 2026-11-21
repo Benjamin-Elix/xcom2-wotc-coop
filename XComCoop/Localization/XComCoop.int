@@ -1,7 +1,10 @@
 ; Placeholders: %PLAYER = the other player's Steam name, %LOCAL / %REMOTE = your value / theirs,
-; %MOD = name of a mod or DLC.
+; %MOD = name of a mod or DLC, %SECONDS = a time in seconds.
 
 [XComCoop_UIShellListener]
+strCoopButton="CO-OP"
+
+[XComCoop_UIPauseMenuListener]
 strCoopButton="CO-OP"
 
 [XComCoop_UILobby]
@@ -16,7 +19,16 @@ strStateConnecting="Connecting to the host..."
 strStateChecking="Connected. Checking versions and mods..."
 strStateReady="Connected and compatible."
 strStateFailed="Could not play together:"
-strReadyNextStep="Playing a campaign together comes in a later version of the mod."
+strReadyHostInMenu="To share a campaign, load it and open CO-OP from the pause menu (Esc) on the Avenger."
+strReadyHostStart="Press START CO-OP to send your campaign to %PLAYER."
+strReadyClient="Waiting for the host to start..."
+strStateSendingCampaign="Sending your campaign to %PLAYER..."
+strStateLoadingCampaign="Receiving the host's campaign. The Avenger loads by itself."
+strStateInCampaignHost="%PLAYER has a copy of your campaign."
+strStateInCampaignClient="You are in %PLAYER's campaign."
+strCopyNote="For now this is a copy: what you each do is not sent to the other player yet."
+strConnectionOpen="Connection: open"
+strConnectionClosed="Connection: closed"
 strHost="Host"
 strPlayer2="Player 2"
 strYou="you"
@@ -28,6 +40,8 @@ strInvited="invited"
 strLeave="LEAVE"
 strRetry="TRY AGAIN"
 strRefresh="REFRESH"
+strStart="START CO-OP"
+strClose="CLOSE"
 
 [XComCoop_Session]
 strCreateLobbyFailed="Could not create the Steam lobby."
@@ -44,6 +58,14 @@ strInviteText="%PLAYER invites you to play XCOM 2 co-op."
 strInviteAccept="JOIN"
 strInviteDecline="DECLINE"
 strInviteNotInMenu="%PLAYER invites you to play co-op. Go to the main menu and accept the invite from Steam again to join."
+strNotOnAvenger="Load your campaign and open CO-OP from the pause menu on the Avenger to start."
+strIronmanNotSupported="Ironman campaigns cannot be played in co-op yet."
+strCampaignReceived="%PLAYER received your campaign (%SECONDS s)."
+strCampaignMismatch="The campaign %PLAYER received is not the same as yours. See Launch.log."
+strCampaignInvalid="The campaign from the host could not be loaded (no Avenger in it)."
+strClientArrived="%PLAYER is now on the Avenger."
+strArrivedClient="You are on the Avenger in %PLAYER's campaign."
+strConnectionLostLoading="The connection to the host closed while the campaign loaded."
 
 [XComCoop_CompatInfo]
 strOtherPlayer="The other player"

@@ -89,10 +89,11 @@ Disse tallene er ikke bestemt ennå. De har foreløpige verdier i `XComCoop.ini`
 
 ### Fase 0: Grunnlag og usikkerheter
 - Installer SDK og Highlander. Sett opp repo-strukturen.
-- Test de tre største usikkerhetene:
+- Test de største usikkerhetene:
   1. **Egne data over Steam fra UnrealScript.** Reserveplan: hjelpeapp via `TcpLink`/lokal TCP.
   2. **Sende og laste hele `XComGameStateHistory`.**
   3. **Strategi og taktisk parallelt på to maskiner**, med fletting.
+  4. **Gå inn i strategidelen fra en mottatt historikk**, uten lagring bak. Spillet gjør det bare for taktisk.
 - Kartlegging av klassene og forslag til testene: [docs/KARTLEGGING-NETTVERK.md](docs/KARTLEGGING-NETTVERK.md).
 
 ### Fase 1: Lobby
@@ -111,6 +112,15 @@ Lobby, invitasjon, sjekk av mods og versjon.
 
 ### Fase 2: Strategisynk én vei
 Verten sender, klienten speiler.
+- Første steg: klienten får en kopi av kampanjen.
+  1. Verten laster inn kampanjen, åpner co-op fra pausemenyen på Avengeren (egen CO-OP-knapp under menyen) og inviterer.
+  2. Når begge er koblet til og sjekket, trykker verten START CO-OP. `XComCoop_Session.StartCampaign` sender
+     fingeravtrykket og så hele historikken med `SendHistory`.
+  3. Klienten bekrefter med sitt fingeravtrykk, setter `bPerformingStandardLoad` og laster Avengeren som om den lastet
+     en lagring (fase 0, test 4). Fremme sier den fra til verten, hvis forbindelsen fortsatt er oppe.
+- Kopien lever sitt eget liv etterpå. Speiling av endringer hos verten er neste steg.
+- Ukjent til testen med to PC-er: om forbindelsen overlever at klienten laster et nytt kart. Spillets egen flerspiller
+  holder forbindelsen når begge åpner taktisk kart (`UIMPShell_Lobby.LoadTacticalMap`), så det er trolig.
 
 ### Fase 3: Strategisynk begge veier
 Deltaer fra begge, objektversjoner, konflikthåndtering, myke låser.

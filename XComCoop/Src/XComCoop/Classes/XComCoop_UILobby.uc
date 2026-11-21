@@ -1,8 +1,12 @@
 //---------------------------------------------------------------------------------------
 //  FILE:    XComCoop_UILobby.uc
-//  PURPOSE: Phase 1 co-op lobby screen. Shows the session state, the two players, the
-//           result of the compatibility check and (for the host) online friends to invite.
+//  PURPOSE: The co-op screen. Shows the session state, the two players, the result of the
+//           compatibility check, (for the host) online friends to invite, and on the
+//           Avenger the button that sends the campaign to the other player.
 //           All logic lives in XComCoop_Session; this screen only draws it.
+//
+//           Closing the screen (CLOSE, Esc) keeps the session; LEAVE ends it. The CO-OP
+//           buttons in the main menu and the pause menu open the screen again.
 //---------------------------------------------------------------------------------------
 class XComCoop_UILobby extends UIScreen dependson(XComCoop_Session);
 
@@ -16,6 +20,7 @@ const INVITE_LABEL_Y = 320;
 const LIST_Y = 355;
 const LIST_HEIGHT = 190;
 const BUTTON_Y = 565;
+const BUTTON_SLOT_WIDTH = 185;
 
 var UIPanel Container;
 var UIBGBox BG;
@@ -26,6 +31,8 @@ var UIList FriendsList;
 var UIButton LeaveButton;
 var UIButton RetryButton;
 var UIButton RefreshButton;
+var UIButton StartButton;
+var UIButton CloseButton;
 
 // Friends currently in the list, in the same order as the list items.
 var array<OnlineFriend> ShownFriends;
@@ -46,7 +53,16 @@ var localized string strStateConnecting;
 var localized string strStateChecking;
 var localized string strStateReady;
 var localized string strStateFailed;
-var localized string strReadyNextStep;
+var localized string strReadyHostInMenu;
+var localized string strReadyHostStart;
+var localized string strReadyClient;
+var localized string strStateSendingCampaign;
+var localized string strStateLoadingCampaign;
+var localized string strStateInCampaignHost;
+var localized string strStateInCampaignClient;
+var localized string strCopyNote;
+var localized string strConnectionOpen;
+var localized string strConnectionClosed;
 var localized string strHost;
 var localized string strPlayer2;
 var localized string strYou;
@@ -58,6 +74,8 @@ var localized string strInvited;
 var localized string strLeave;
 var localized string strRetry;
 var localized string strRefresh;
+var localized string strStart;
+var localized string strClose;
 
 /// Opens the lobby screen, or returns it if it is already open.
 static function XComCoop_UILobby Open()
@@ -107,14 +125,21 @@ simulated function InitScreen(XComPlayerController InitController, UIMovie InitM
 	FriendsList = Spawn(class'UIList', Container).InitList('Friends', PADDING, LIST_Y, PANEL_WIDTH - 2 * PADDING, LIST_HEIGHT);
 	FriendsList.OnItemClicked = OnFriendClicked;
 
+	// Four slots. RETRY and START never show at the same time, so they share one.
 	RefreshButton = Spawn(class'UIButton', Container).InitButton('Refresh', strRefresh, OnRefreshClicked);
 	RefreshButton.SetPosition(PADDING, BUTTON_Y);
 
 	RetryButton = Spawn(class'UIButton', Container).InitButton('Retry', strRetry, OnRetryClicked);
-	RetryButton.SetPosition(PANEL_WIDTH / 2 - 80, BUTTON_Y);
+	RetryButton.SetPosition(PADDING + BUTTON_SLOT_WIDTH, BUTTON_Y);
+
+	StartButton = Spawn(class'UIButton', Container).InitButton('Start', strStart, OnStartClicked);
+	StartButton.SetPosition(PADDING + BUTTON_SLOT_WIDTH, BUTTON_Y);
 
 	LeaveButton = Spawn(class'UIButton', Container).InitButton('Leave', strLeave, OnLeaveClicked);
-	LeaveButton.SetPosition(PANEL_WIDTH - PADDING - 160, BUTTON_Y);
+	LeaveButton.SetPosition(PADDING + 2 * BUTTON_SLOT_WIDTH, BUTTON_Y);
+
+	CloseButton = Spawn(class'UIButton', Container).InitButton('Close', strClose, OnCloseClicked);
+	CloseButton.SetPosition(PADDING + 3 * BUTTON_SLOT_WIDTH, BUTTON_Y);
 
 	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
 	if (PlayerInterface != none)
@@ -154,6 +179,12 @@ simulated function Refresh()
 	{
 		Text $= "<br><br>" $ strHost $ ": " $ OtherName $ "<br>" $ strPlayer2 $ ": " $ MyName;
 	}
+	if (ShowsConnection(Session))
+	{
+		Text $= "<br>" $ (class'XComCoop_Util'.static.IsConnected()
+			? class'UIUtilities_Text'.static.GetColoredText(strConnectionOpen, eUIState_Good)
+			: class'UIUtilities_Text'.static.GetColoredText(strConnectionClosed, eUIState_Bad));
+	}
 
 	for (i = 0; i < Session.Problems.Length; i++)
 	{
@@ -176,10 +207,13 @@ simulated function Refresh()
 	FriendsList.SetVisible(bShowInvites);
 	RefreshButton.SetVisible(bShowInvites);
 	RetryButton.SetVisible(Session.bIsHost && Session.bInLobby && Session.SessionState == eCoopState_Failed);
+	StartButton.SetVisible(Session.bIsHost && Session.SessionState == eCoopState_Ready && class'XComCoop_Util'.static.IsInStrategy());
 }
 
 simulated function string StateText(XComCoop_Session Session)
 {
+	local string Ready;
+
 	switch (Session.SessionState)
 	{
 	case eCoopState_Idle:              return strStateIdle;
@@ -189,11 +223,39 @@ simulated function string StateText(XComCoop_Session Session)
 	case eCoopState_Connecting:        return strStateConnecting;
 	case eCoopState_Checking:          return strStateChecking;
 	case eCoopState_Ready:
-		return class'UIUtilities_Text'.static.GetColoredText(strStateReady, eUIState_Good) $ "<br>" $ strReadyNextStep;
+		Ready = class'UIUtilities_Text'.static.GetColoredText(strStateReady, eUIState_Good) $ "<br>";
+		if (!Session.bIsHost)
+		{
+			return Ready $ strReadyClient;
+		}
+		return Ready $ Repl(class'XComCoop_Util'.static.IsInStrategy() ? strReadyHostStart : strReadyHostInMenu, "%PLAYER", Session.OtherName());
+	case eCoopState_SendingCampaign:
+		return Repl(strStateSendingCampaign, "%PLAYER", Session.OtherName());
+	case eCoopState_LoadingCampaign:
+		return strStateLoadingCampaign;
+	case eCoopState_InCampaign:
+		return class'UIUtilities_Text'.static.GetColoredText(
+			Repl(Session.bIsHost ? strStateInCampaignHost : strStateInCampaignClient, "%PLAYER", Session.OtherName()), eUIState_Good)
+			$ "<br>" $ strCopyNote;
 	case eCoopState_Failed:
 		return class'UIUtilities_Text'.static.GetColoredText(strStateFailed, eUIState_Bad);
 	}
 	return "";
+}
+
+/// The connection line only makes sense once the two players have found each other.
+simulated function bool ShowsConnection(XComCoop_Session Session)
+{
+	switch (Session.SessionState)
+	{
+	case eCoopState_Checking:
+	case eCoopState_Ready:
+	case eCoopState_SendingCampaign:
+	case eCoopState_LoadingCampaign:
+	case eCoopState_InCampaign:
+		return true;
+	}
+	return false;
 }
 
 /// Online friends, the ones playing XCOM 2 first.
@@ -311,9 +373,20 @@ simulated function OnRetryClicked(UIButton Button)
 	class'XComCoop_Session'.static.Get().ResumeHosting();
 }
 
+simulated function OnStartClicked(UIButton Button)
+{
+	class'XComCoop_Session'.static.Get().StartCampaign();
+}
+
 simulated function OnLeaveClicked(UIButton Button)
 {
 	class'XComCoop_Session'.static.Get().Leave();
+	CloseScreen();
+}
+
+/// Closes the screen but keeps the session.
+simulated function OnCloseClicked(UIButton Button)
+{
 	CloseScreen();
 }
 
@@ -328,7 +401,7 @@ simulated function bool OnUnrealCommand(int cmd, int arg)
 	case class'UIUtilities_Input'.const.FXS_BUTTON_B:
 	case class'UIUtilities_Input'.const.FXS_KEY_ESCAPE:
 	case class'UIUtilities_Input'.const.FXS_R_MOUSE_DOWN:
-		OnLeaveClicked(none);
+		OnCloseClicked(none);
 		return true;
 	}
 	return super.OnUnrealCommand(cmd, arg);
