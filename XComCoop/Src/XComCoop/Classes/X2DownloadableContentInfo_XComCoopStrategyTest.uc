@@ -46,3 +46,20 @@ exec function CoopWatchStop()
 {
 	class'XComCoop_ChangeWatch'.static.Get().Stop();
 }
+
+// Phase 2 test 5: throw away local game states again (XComCoop_RollbackTest).
+
+exec function CoopRollbackMark()
+{
+	class'XComCoop_RollbackTest'.static.Get().Mark();
+}
+
+exec function CoopRollbackInfo()
+{
+	class'XComCoop_RollbackTest'.static.Get().Info();
+}
+
+exec function CoopRollback()
+{
+	class'XComCoop_RollbackTest'.static.Get().Rollback();
+}

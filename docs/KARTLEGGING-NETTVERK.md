@@ -270,3 +270,11 @@ tilstand, høyst 17. Nesten alt er `ChangeContainer`-contexts. Tre grupper, med 
 Følger for fase 2: verten kan sende etter hver endring, for mengden er liten. Klienten kan ikke styre tiden eller
 ta valg. Klientens egne småendringer fra den tredje gruppen må kastes når nye rammer kommer fra verten, for eksempel
 med `ObliterateGameStatesFromHistory`. Om spillet tåler det, kan testes alene.
+
+**Test 5, 21.11.2026: klienten kan kaste sine egne endringer (`XComCoop_RollbackTest`).** `CoopRollbackMark` på
+Avenger, så 12 minutter vanlig spill: forskning startet (Modular Weapons), medikit og Guerrilla Tactics School i
+gang, flyging og scanning på jordkloden, en forskning ferdig. `CoopRollback` fjernet 137 tilstander med
+`ObliterateGameStatesFromHistory` og satte `` `STRATEGYRULES.GameTime `` fra historikken igjen. Fingeravtrykket var likt
+merket, og skjermene viste riktige tall (supplies, forskning, Engineering). Spillet gikk videre uten feil, og en
+ny lagring lastet inn med samme fingeravtrykk. Datoen på skjermen er lokal tid der Avengeren står
+(`GetLocalizedTime`), så 1. mars kl. 00 UTC vises som 28. februar i Amerika.
