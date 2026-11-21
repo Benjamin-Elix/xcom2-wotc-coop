@@ -29,3 +29,20 @@ exec function CoopStrategyCheck()
 {
 	class'XComCoop_StrategyStartTest'.static.Get().Check();
 }
+
+// Phase 2 mapping: how often and how the campaign changes while playing (XComCoop_ChangeWatch).
+
+exec function CoopWatchStart()
+{
+	class'XComCoop_ChangeWatch'.static.Get().Start();
+}
+
+exec function CoopWatchReport()
+{
+	class'XComCoop_ChangeWatch'.static.Get().Report();
+}
+
+exec function CoopWatchStop()
+{
+	class'XComCoop_ChangeWatch'.static.Get().Stop();
+}

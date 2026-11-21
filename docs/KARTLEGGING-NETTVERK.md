@@ -221,3 +221,52 @@ ved vanlige innlastinger. `plain` er ikke prøvd; det trengs ikke.
 
 Klientens del av fase 2 blir dermed: ta imot historikken, sett `ONLINEEVENTMGR.bPerformingStandardLoad = true`, åpne
 `Avenger_Root?game=XComGame.XComHeadQuartersGame?LoadingSave`.
+
+## Fase 2: speiling av kampanjen (kartlagt 21.11.2026)
+
+**Sende bare endringer.** `XComGameStateNetworkManager` holder for hver tilkobling en speilkopi av historikken
+(`ConnectionInfo.HistoryMirror`, `EventManagerMirror`) og hvor langt den har sendt (`CurrentSendHistoryIndex`).
+`SendPartialHistory(History, EventManager)` sender rammene den andre siden mangler, og mottakeren får
+`OnReceivePartialHistory`. Det native laget kan også be om ny full historikk (`ReceiveRequestNewHistory`) eller en
+delta (`ReceiveRequestDelta`), og har en vei for å oppdage avvik (`Desynchronize`).
+Spillets flerspiller (`X2TacticalMPGameRuleset.uc:310-359`) sender `SendPartialHistory` ved turbytte. Mottakeren kaller
+`RebuildLocalStateObjectCache` og svarer med kommandoen `HistoryReceived`, og avsenderen venter på det svaret før
+den sender igjen (`bSendingPartialHistory`).
+
+**Kontekst-sending passer ikke strategi.** `X2GameRuleset.SubmitGameStateContext` (226-249) legger contexts med
+`bSendGameState` i sendekøen, og mottakeren kjører dem i `` `TACTICALRULES `` (`SubmitContextToRuleset`), som ikke
+finnes i strategi. Speilingen bruker derfor `SendPartialHistory`.
+
+**Oppdage endringer hos verten.** `XComGameStateHistory.RegisterOnNewGameStateDelegate` (129) kalles hver gang en ny
+tilstand legges i historikken. Delegatene ryddes ved kartbytte (kommentar på linje 43 og 261), så de må registreres
+på nytt etter hver innlasting.
+
+**Oppdatere Avengeren hos klienten.** Strategi har ingen avspilling som taktisk. Skjermene leser data når de åpnes,
+og noen få oppdateres når de blir bedt om det (`UIAvengerHUD.UpdateResources`, `UIFacilityGrid.UpdateData`).
+Klienten må selv be skjermene oppdatere seg når det kommer endringer.
+
+**Klientens egne endringer.** Klienten kjører sitt eget strategilag og kan lage tilstander selv: tid som går på
+jordkloden, flagg for «sett», popup-er. Da sklir historikkene fra hverandre. Verktøy som finnes:
+`ObliterateGameStatesFromHistory(Count)` (310) fjerner de siste rammene, og `AddHistoryLock`/`RemoveHistoryLock`
+(483-484) skal hindre nye tilstander mens historikken er låst. Hvordan det native laget reagerer når klienten har
+egne rammer, må testes med to PC-er.
+
+**Ukjent før testen med to PC-er:** hva `OnReceivePartialHistory` gjør med rammer klienten har laget selv, og hvor
+ofte verten lager nye tilstander under vanlig spill. Det siste kan måles alene.
+
+**Måling 21.11.2026 (`CoopWatchStart`/`CoopWatchReport`, `XComCoop_ChangeWatch`):** 12,5 minutter vanlig spill på
+Avenger og jordkloden ga 194 nye tilstander, 15,5 i minuttet. Til sammen 386 endrede objekter, i snitt 2 per
+tilstand, høyst 17. Nesten alt er `ChangeContainer`-contexts. Tre grupper, med 64 ulike typer:
+- **Spillerens valg** (om lag 15): `Adding Research Project`, `Adding Facility Project`, `Squad Selection`,
+  `Set Pending Point Of Travel`, `Launch Mission Selected`.
+- **Tid som går** (om lag halvparten): `Unit Recovered Will`, `Unit Healed`, `Update Scanning Site`, flyging
+  (`Airship Flight Beginning/Completed`, `Update Skyranger location`), `Pause/Resume All Projects`, `Geoscape Pause`,
+  `ResearchCompleted`, `Update Mission Calendar`. Bare verten kan eie tiden.
+- **Bare ved å se på** (om lag en tredel): `Entered/Exited Facility` (0 objekter, bare hendelser),
+  `First visit to Labs`, `Unmark needs attention`, popup-er merket som sett, `Trigger Objective Narrative Moment`
+  (22 ganger), og troppvalget (`Blast Backpack and MissionItems`, 78 objekter; `Make Wounded Soldier Items Available`).
+  Klienten lager disse selv når spilleren klikker rundt.
+
+Følger for fase 2: verten kan sende etter hver endring, for mengden er liten. Klienten kan ikke styre tiden eller
+ta valg. Klientens egne småendringer fra den tredje gruppen må kastes når nye rammer kommer fra verten, for eksempel
+med `ObliterateGameStatesFromHistory`. Om spillet tåler det, kan testes alene.
