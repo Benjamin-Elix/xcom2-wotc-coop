@@ -46,7 +46,10 @@ var int ConnectAttemptsLeft;
 // An invite that arrived while we were not in a lobby, waiting for the player's answer.
 var UniqueNetId PendingInviteLobbyId;
 
-var array< delegate<OnSessionChanged> > SessionChangedDelegates;
+// Goes up by one on every change. The lobby screen polls it with its own timer. The session
+// lives for the whole game, so it must never hold a reference to a screen or other actor:
+// the old map could then not be garbage collected and loading a save crashes.
+var int ChangeCount;
 
 var localized string strCreateLobbyFailed;
 var localized string strJoinLobbyFailed;
@@ -62,9 +65,6 @@ var localized string strInviteText;
 var localized string strInviteAccept;
 var localized string strInviteDecline;
 var localized string strInviteNotInMenu;
-
-/// The UI listens to this to redraw.
-delegate OnSessionChanged();
 
 static function XComCoop_Session Get()
 {
@@ -636,30 +636,9 @@ function Reset()
 	ConnectAttemptsLeft = 0;
 }
 
-function AddSessionChangedDelegate(delegate<OnSessionChanged> Callback)
-{
-	if (SessionChangedDelegates.Find(Callback) == INDEX_NONE)
-	{
-		SessionChangedDelegates.AddItem(Callback);
-	}
-}
-
-function ClearSessionChangedDelegate(delegate<OnSessionChanged> Callback)
-{
-	SessionChangedDelegates.RemoveItem(Callback);
-}
-
 function NotifyChanged()
 {
-	local delegate<OnSessionChanged> Callback;
-	local array< delegate<OnSessionChanged> > Callbacks;
-
-	// Copy first: a callback may remove itself.
-	Callbacks = SessionChangedDelegates;
-	foreach Callbacks(Callback)
-	{
-		Callback();
-	}
+	ChangeCount++;
 }
 
 static function Say(string Msg)

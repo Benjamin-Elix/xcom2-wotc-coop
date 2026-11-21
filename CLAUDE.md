@@ -21,6 +21,12 @@ Brukeren skriver norsk; svar på norsk.
 - Pakke, DLCName og DLCIdentifier heter `XComCoop`.
 - Nye filer bør føres opp i `XComCoop/XComCoop.x2proj` så de vises i ModBuddy (byggeverktøyet tar med alt i mappen uansett).
 - Lokaliseringsfiler (`.int` osv.) lagres som UTF-8. X2ModBuildCommon gjør dem om til UTF-16 ved bygging.
+- **Ingen referanser fra objekter som lever hele spillet til actors eller skjermer.** Det gjelder klassens standardobjekt
+  (CDO), `UIScreenListener`, og delegater registrert på nettverksmanageren eller Steam-grensesnittene som peker på
+  en skjerm. Slike referanser hindrer at det gamle kartet ryddes bort, og spillet krasjer når en lagring lastes
+  («World ... not cleaned up by garbage collection»). Slå opp skjermen når du trenger den. La skjermen selv spørre
+  etter endringer med en timer på seg selv (se `XComCoop_UILobby.Poll`). Timere og delegater skal peke *fra*
+  actoren *til* det varige objektet, ikke omvendt.
 
 ## Bygge
 

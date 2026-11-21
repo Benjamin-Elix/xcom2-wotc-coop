@@ -28,6 +28,7 @@ var config float            ReconnectWindowSeconds;     // 0 = no limit
 
 // --- User interface ---
 var config float            MainMenuButtonCheckSeconds;
+var config float            LobbyRefreshSeconds;
 
 // --- Strategy and Avenger ---
 var config float            SoldierSoftLockTimeoutSeconds;

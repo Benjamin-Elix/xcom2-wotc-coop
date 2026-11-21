@@ -31,6 +31,10 @@ var UIButton RefreshButton;
 var array<OnlineFriend> ShownFriends;
 var array<UniqueNetId> InvitedFriends;
 
+// Session.ChangeCount when the screen was last drawn. The screen polls the session with
+// its own timer instead of registering delegates on objects that outlive the map.
+var int LastChangeCount;
+
 var localized string strTitle;
 var localized string strHostSubtitle;
 var localized string strClientSubtitle;
@@ -112,17 +116,15 @@ simulated function InitScreen(XComPlayerController InitController, UIMovie InitM
 	LeaveButton = Spawn(class'UIButton', Container).InitButton('Leave', strLeave, OnLeaveClicked);
 	LeaveButton.SetPosition(PANEL_WIDTH - PADDING - 160, BUTTON_Y);
 
-	class'XComCoop_Session'.static.Get().AddSessionChangedDelegate(Refresh);
-
 	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
 	if (PlayerInterface != none)
 	{
-		PlayerInterface.AddReadFriendsCompleteDelegate(0, OnReadFriendsComplete);
 		PlayerInterface.ReadFriendsList(0);
 	}
 
 	Refresh();
 	RefreshFriends();
+	SetTimer(class'XComCoop_Config'.default.LobbyRefreshSeconds, true, nameof(Poll));
 }
 
 // --- Drawing ---------------------------------------------------------------------------------
@@ -135,6 +137,7 @@ simulated function Refresh()
 	local bool bShowInvites;
 
 	Session = class'XComCoop_Session'.static.Get();
+	LastChangeCount = Session.ChangeCount;
 
 	Header.SetText(strTitle, Session.bIsHost ? strHostSubtitle : strClientSubtitle);
 
@@ -278,9 +281,17 @@ simulated function OnFriendClicked(UIList ContainerList, int ItemIndex)
 	}
 }
 
-simulated function OnReadFriendsComplete(bool bWasSuccessful)
+/// Redraws when the session changed, and fills the friends list once Steam has it.
+simulated function Poll()
 {
-	RefreshFriends();
+	if (class'XComCoop_Session'.static.Get().ChangeCount != LastChangeCount)
+	{
+		Refresh();
+	}
+	if (ShownFriends.Length == 0 && FriendsList.bIsVisible)
+	{
+		RefreshFriends();
+	}
 }
 
 simulated function OnRefreshClicked(UIButton Button)
@@ -325,14 +336,7 @@ simulated function bool OnUnrealCommand(int cmd, int arg)
 
 simulated function OnRemoved()
 {
-	local OnlinePlayerInterface PlayerInterface;
-
-	class'XComCoop_Session'.static.Get().ClearSessionChangedDelegate(Refresh);
-	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
-	if (PlayerInterface != none)
-	{
-		PlayerInterface.ClearReadFriendsCompleteDelegate(0, OnReadFriendsComplete);
-	}
+	ClearTimer(nameof(Poll));
 	super.OnRemoved();
 }
 

@@ -5,18 +5,24 @@
 //
 //           UIFinalShell rebuilds its menu now and then (UpdateMenu, e.g. after reading
 //           saves or a login change), which removes our button. A short repeating timer
-//           puts it back. No class override, so other mods can change the menu as well.
+//           on the shell puts it back. No class override, so other mods can change the
+//           menu as well.
+//
+//           Screen listeners live for the whole game. Never keep a reference to a screen
+//           or any other actor here: the old map could then not be garbage collected and
+//           the game crashes when a save is loaded ("World ... not cleaned up by garbage
+//           collection"). The shell is looked up each time instead.
 //---------------------------------------------------------------------------------------
 class XComCoop_UIShellListener extends UIScreenListener;
 
 const BUTTON_NAME = 'XComCoopButton';
 
-var UIFinalShell Shell;
-
 var localized string strCoopButton;
 
 event OnInit(UIScreen Screen)
 {
+	local UIFinalShell Shell;
+
 	Shell = UIFinalShell(Screen);
 	if (Shell == none)
 	{
@@ -25,20 +31,29 @@ event OnInit(UIScreen Screen)
 
 	class'XComCoop_Session'.static.Get().Init();
 
-	EnsureButton();
+	AddButton(Shell);
+	// The timer belongs to the shell, so it goes away with it.
 	Shell.SetTimer(class'XComCoop_Config'.default.MainMenuButtonCheckSeconds, true, nameof(EnsureButton), self);
 }
 
-event OnRemoved(UIScreen Screen)
+static function UIFinalShell FindShell()
 {
-	if (Screen == Shell)
+	local XComPresentationLayerBase Pres;
+
+	Pres = class'XComCoop_Util'.static.GetPres();
+	if (Pres == none || Pres.ScreenStack == none)
 	{
-		Shell.ClearTimer(nameof(EnsureButton), self);
-		Shell = none;
+		return none;
 	}
+	return UIFinalShell(Pres.ScreenStack.GetFirstInstanceOf(class'UIFinalShell'));
 }
 
 function EnsureButton()
+{
+	AddButton(FindShell());
+}
+
+function AddButton(UIFinalShell Shell)
 {
 	local UIButton Button;
 	local int i, MPIndex;
@@ -79,6 +94,9 @@ function EnsureButton()
 
 function OnCoopClicked(UIButton Button)
 {
+	local UIFinalShell Shell;
+
+	Shell = FindShell();
 	if (Shell != none && Shell.m_bDisableActions)
 	{
 		return;
