@@ -60,7 +60,10 @@ var localized string strStateSendingCampaign;
 var localized string strStateLoadingCampaign;
 var localized string strStateInCampaignHost;
 var localized string strStateInCampaignClient;
-var localized string strCopyNote;
+var localized string strMirrorNoteHost;
+var localized string strMirrorNoteClient;
+var localized string strMirrorStatsHost;
+var localized string strMirrorStatsClient;
 var localized string strConnectionOpen;
 var localized string strConnectionClosed;
 var localized string strHost;
@@ -236,7 +239,10 @@ simulated function string StateText(XComCoop_Session Session)
 	case eCoopState_InCampaign:
 		return class'UIUtilities_Text'.static.GetColoredText(
 			Repl(Session.bIsHost ? strStateInCampaignHost : strStateInCampaignClient, "%PLAYER", Session.OtherName()), eUIState_Good)
-			$ "<br>" $ strCopyNote;
+			$ "<br>" $ Repl(Session.bIsHost ? strMirrorNoteHost : strMirrorNoteClient, "%PLAYER", Session.OtherName())
+			$ "<br>" $ (Session.bIsHost
+				? Repl(strMirrorStatsHost, "%COUNT", string(Session.MirrorSent))
+				: Repl(Repl(strMirrorStatsClient, "%COUNT", string(Session.MirrorReceived)), "%DROPPED", string(Session.MirrorRolledBack)));
 	case eCoopState_Failed:
 		return class'UIUtilities_Text'.static.GetColoredText(strStateFailed, eUIState_Bad);
 	}

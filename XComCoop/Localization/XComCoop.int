@@ -1,5 +1,5 @@
 ; Placeholders: %PLAYER = the other player's Steam name, %LOCAL / %REMOTE = your value / theirs,
-; %MOD = name of a mod or DLC, %SECONDS = a time in seconds.
+; %MOD = name of a mod or DLC, %SECONDS = a time in seconds, %COUNT / %DROPPED = numbers.
 
 [XComCoop_UIShellListener]
 strCoopButton="CO-OP"
@@ -24,9 +24,12 @@ strReadyHostStart="Press START CO-OP to send your campaign to %PLAYER."
 strReadyClient="Waiting for the host to start..."
 strStateSendingCampaign="Sending your campaign to %PLAYER..."
 strStateLoadingCampaign="Receiving the host's campaign. The Avenger loads by itself."
-strStateInCampaignHost="%PLAYER has a copy of your campaign."
-strStateInCampaignClient="You are in %PLAYER's campaign."
-strCopyNote="For now this is a copy: what you each do is not sent to the other player yet."
+strStateInCampaignHost="%PLAYER is watching your campaign."
+strStateInCampaignClient="You are watching %PLAYER's campaign."
+strMirrorNoteHost="What you do is sent to %PLAYER as you play. %PLAYER can only watch for now."
+strMirrorNoteClient="You can look around, but what you do yourself is undone. Taking part comes in a later version."
+strMirrorStatsHost="Updates sent: %COUNT"
+strMirrorStatsClient="Updates received: %COUNT (own changes undone: %DROPPED)"
 strConnectionOpen="Connection: open"
 strConnectionClosed="Connection: closed"
 strHost="Host"
@@ -66,6 +69,15 @@ strCampaignInvalid="The campaign from the host could not be loaded (no Avenger i
 strClientArrived="%PLAYER is now on the Avenger."
 strArrivedClient="You are on the Avenger in %PLAYER's campaign."
 strConnectionLostLoading="The connection to the host closed while the campaign loaded."
+strMirrorResync="The campaigns drifted apart. Sending the whole campaign to %PLAYER again."
+strMirrorGaveUp="The campaigns keep drifting apart, so updates to %PLAYER have stopped. See Launch.log."
+strHostOnMission="%PLAYER is on a mission. You get the campaign with the results when they are back on the Avenger."
+strWatchBanner="Watching %PLAYER's campaign"
+strWatchBannerMission="%PLAYER is on a mission"
+
+[XComCoop_UISquadSelectListener]
+strTitle="CO-OP"
+strText="Only %PLAYER can start missions in this version. Playing missions alone and together comes later."
 
 [XComCoop_CompatInfo]
 strOtherPlayer="The other player"

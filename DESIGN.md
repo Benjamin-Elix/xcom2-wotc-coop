@@ -120,7 +120,35 @@ Verten sender, klienten speiler.
      fingeravtrykket og så hele historikken med `SendHistory`.
   3. Klienten bekrefter med sitt fingeravtrykk, setter `bPerformingStandardLoad` og laster Avengeren som om den lastet
      en lagring (fase 0, test 4). Fremme sier den fra til verten, hvis forbindelsen fortsatt er oppe.
-- Kopien lever sitt eget liv etterpå. Speiling av endringer hos verten er neste steg.
+- Speiling: verten fanger opp hver ny tilstand (`RegisterOnNewGameStateDelegate`), venter `MirrorSendDelaySeconds`
+  og sender kommandoen `XComCoopMirror` fulgt av `SendPartialHistory`. Én oppdatering om gangen; klienten svarer med
+  historikkindeks og fingeravtrykk. Er avtrykket ulikt vertens, sendes hele kampanjen på nytt og klienten laster
+  Avengeren igjen (høyst `MirrorMaxResyncs` ganger).
+- Klienten ser bare på. Det den lager selv (rom besøkt, popup-er sett, tid på jordkloden) fjernes med
+  `ObliterateGameStatesFromHistory` (fase 2, test 5): når `XComCoopMirror` kommer, og av en vakt hvert
+  `MirrorGuardSeconds`. Etter hver oppdatering tegnes ressurslinjen på nytt.
+- Bare verten kjører tiden. Klienten holder jordkloden stoppet (`XGGeoscape.m_fTimeScale = PAUSED` hvert
+  `ClientTimeFreezeSeconds`), så scan og flyging hos klienten ikke flytter tiden. Klokken på jordkloden går bare i minnet
+  og lagres i historikken når tiden stopper (`XGGeoscape.Pause`). Verten sender derfor klokken selv
+  (`XComCoopClock`, hvert `MirrorClockSeconds` når den har flyttet seg), og klienten viser den uten å endre historikken.
+- Flyging: Avenger, Skyranger og UFO-er flytter seg ved å endre sine tilstandsobjekter direkte hvert bilde
+  (`XComStrategyMap.UpdateMovers`), uten nye tilstander. Mens noe flyr, sender verten posisjon og retning
+  (`XComCoopMove`, hvert `MirrorMoverSeconds`), og klienten glir jevnt dit og lar kameraet følge Avenger eller
+  Skyranger, slik `XGGeoscape.UpdateUI` gjør hos verten.
+- Popup-er: de legges i en kø i XComHQ og fjernes i samme bilde som de vises, så speilingen fanger dem ikke. DLC-kroken
+  `DisplayQueuedDynamicPopup` ser hver popup hos verten, og verten sender den (`XComCoopPopup`) etter oppdateringen den
+  hører til. Klienten viser den når spillet sier at den passer (`IsPropertySetApplicableForDisplay`). Knappefunksjonen er
+  en delegat og kan ikke sendes; klienten slår den opp på popup-navnet (`XComCoop_PopupCallbacks`, laget fra
+  `BuildUIAlert`-kallene i Highlanders `XComHQPresentationLayer`). Knapper som viser noe virker hos klienten; knapper
+  som endrer kampanjen angres til fase 3.
+- Etter hver oppdatering tegnes også Avenger-oversikten (`UIFacilityGrid.UpdateData`) og rommenes rekvisitter
+  (`XGBase.UpdateFacilityProps`) på nytt, og skjermen klienten ser på, høyst hvert `OpenScreenRefreshSeconds`:
+  `UIInventory.PopulateData` (Research, Proving Ground, Black Market, Engineering, lager), `UIArmory.PopulateData`,
+  `UIPersonnel.RefreshData`, `UIFacility.RealizeFacility` (rommene) og `UIResistance.UpdateData`.
+- Klienten har et merke øverst på Avenger-skjermen: «Watching … campaign».
+- Speilingen gjelder strategi. Går verten på oppdrag (`OnPreMission`), får klienten beskjed og speilingen stopper. Når
+  verten er tilbake (`OnExitPostMissionSequence`) eller laster en annen lagring, sendes hele kampanjen på nytt.
+  Klienten kan ikke åpne troppvalget, for et oppdrag hos klienten ville laste et nytt kart og ikke kunne angres.
 - Ukjent til testen med to PC-er: om forbindelsen overlever at klienten laster et nytt kart. Spillets egen flerspiller
   holder forbindelsen når begge åpner taktisk kart (`UIMPShell_Lobby.LoadTacticalMap`), så det er trolig.
 

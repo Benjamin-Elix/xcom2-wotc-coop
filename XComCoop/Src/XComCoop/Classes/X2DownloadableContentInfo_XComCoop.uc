@@ -14,6 +14,26 @@ static event OnLoadedSavedGameToStrategy()
 	class'XComCoop_Session'.static.Get().OnLoadedToStrategy();
 }
 
+/// Just before a mission starts (strategy -> tactical).
+static event OnPreMission(XComGameState StartGameState, XComGameState_MissionSite MissionState)
+{
+	class'XComCoop_Session'.static.Get().OnMissionStart();
+}
+
+/// Back on the Avenger after a mission, once the post-mission sequence is over.
+static event OnExitPostMissionSequence()
+{
+	class'XComCoop_Session'.static.Get().OnBackFromMission();
+}
+
+/// Called for every popup the game shows (XComPresentationLayerBase.DisplayDynamicPopupImmediate).
+/// We only watch; returning false leaves the handling to the game.
+static function bool DisplayQueuedDynamicPopup(X2StrategyGameRulesetDataStructures.DynamicPropertySet PropertySet)
+{
+	class'XComCoop_Session'.static.Get().OnPopupShown(PropertySet);
+	return false;
+}
+
 /// Prints what the compatibility check sends to the other player.
 exec function CoopCompatInfo()
 {

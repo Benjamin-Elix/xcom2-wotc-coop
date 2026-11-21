@@ -26,6 +26,14 @@ var config float            HeartbeatIntervalSeconds;
 var config float            DisconnectTimeoutSeconds;
 var config float            ReconnectWindowSeconds;     // 0 = no limit
 var config float            CampaignLoadDelaySeconds;
+var config float            MirrorSendDelaySeconds;
+var config float            MirrorAckTimeoutSeconds;
+var config float            MirrorGuardSeconds;
+var config int              MirrorMaxResyncs;
+var config float            MirrorClockSeconds;
+var config float            MirrorMoverSeconds;
+var config float            OpenScreenRefreshSeconds;
+var config float            ClientTimeFreezeSeconds;
 
 // --- User interface ---
 var config float            MainMenuButtonCheckSeconds;

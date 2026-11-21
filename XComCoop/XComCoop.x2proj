@@ -37,12 +37,14 @@
     <Content Include="Src\XComCoop\Classes\XComCoop_MergeTest.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_MissionResult.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_NetTest.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_PopupCallbacks.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_RollbackTest.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Session.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_StrategyStartTest.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UIPauseMenuListener.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UILobby.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UIShellListener.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_UISquadSelectListener.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Util.uc" />
   </ItemGroup>
   <ItemGroup>
