@@ -174,5 +174,17 @@ Det er uklart om begge kjøres, eller bare én av dem. Kjøres den siste, kan sp
 dialog når invitasjonen *mottas* (`OnLobbyInvite` med `bAccepted=false`), og kaller `JoinLobby` selv.
 Testen med to PC-er må vise hva som skjer i begge tilfeller.
 
-**Test 3, parallelt + fletting:** krever kode. Bygg en minimal versjon av resultatsammendraget
+**Test 3, alene på én PC:** `XComCoop_MissionResult` (sammendrag og fletting) og `XComCoop_MergeTest` (kommandoer).
+1. Last inn lagring A på Avenger og kjør `CoopMissionBegin`. Det tar et øyeblikksbilde av soldater, lager og alle objekt-ID-er.
+2. Spill et oppdrag og kjør `CoopMissionSummary` når du er tilbake på Avenger, før noen forfremmes.
+   Kommandoen skriver ut endringene per soldat og per type i lageret, og hvilke nye state-objekter oppdraget lagde.
+3. Last inn lagring A på nytt og gjør noe på Avenger, for eksempel bygg eller kjøp noe.
+4. Kjør `CoopMissionApply`. Sammendraget legges på som én ny game state, oppå det som skjedde imens.
+
+Sammendraget bruker tall, ikke referanser. `KilledUnits` peker på fiender med ID-er fra oppdragssiden, så den flyttes ikke.
+Rangen i WotC styres av drap (`KillCount`, `KillAssistsCount`, `BonusKills`, `NonTacticalKills`), og XP teller bare
+med `bUseFullXpSystem`. Forfremmelse skjer i Armory når `CanRankUpSoldier()` sier ja, så det holder å flytte tellerne.
+Rang, sår, død, fangenskap og nytt personell rapporteres foreløpig bare.
+
+**Test 3, opprinnelig plan, parallelt + fletting:** krever kode. Bygg en minimal versjon av resultatsammendraget
 (én soldat får XP, ett loot-objekt) og flett det inn hos verten mens verten har bygget noe imens.
