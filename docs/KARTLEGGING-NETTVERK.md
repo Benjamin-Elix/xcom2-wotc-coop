@@ -188,3 +188,36 @@ Rang, sår, død, fangenskap og nytt personell rapporteres foreløpig bare.
 
 **Test 3, opprinnelig plan, parallelt + fletting:** krever kode. Bygg en minimal versjon av resultatsammendraget
 (én soldat får XP, ett loot-objekt) og flett det inn hos verten mens verten har bygget noe imens.
+
+**Test 4, alene på én PC: gå inn i strategidelen fra en historikk uten lagring.** Det er dette klienten må gjøre i
+fase 2 etter å ha fått kampanjen til verten. Spillet gjør det bare for taktisk (challenge, ladder og flerspiller bruker
+`ReadHistoryFromFile` og åpner kartet), aldri for strategi.
+
+`XComHeadquartersGame.StartMatch` velger vei ut fra `ONLINEEVENTMGR.bPerformingStandardLoad`:
+- Satt: `FinishLoadGame()` (native, laster de lagrede actorene), så `XGStrategy.OnLoadedGame()` og tilstanden
+  `LoadingGame`. Dette er veien for en vanlig innlasting.
+- Ikke satt, og historikken har mer enn én ramme: `XGStrategy.Init()` og så `TransferFromTactical`, altså flyten for
+  hjemkomst etter et oppdrag. Én ramme betyr ny kampanje.
+
+Flagget er en vanlig `var bool` og kan settes fra moden. Det ukjente er hva `FinishLoadGame` gjør når det ikke finnes
+lagringsdata bak historikken. Highlander endrer ikke denne delen.
+
+Kommandoer (`XComCoop_StrategyStartTest`):
+1. Last inn en lagring på Avenger og kjør `CoopHistoryToFile` (fra test 2). Noter fingeravtrykket.
+2. Avslutt spillet og start det på nytt, så ingenting fra lagringen ligger igjen i minnet.
+3. I hovedmenyen: `CoopHistoryFromFile`. Fingeravtrykket skal være likt det fra steg 1.
+4. `CoopStartStrategy` setter flagget, åpner `Avenger_Root` med `?LoadingSave` og later som det er en vanlig innlasting.
+   `CoopStartStrategy plain` åpner uten flagget, for å se hjemkomst-veien.
+5. På Avenger: `CoopStrategyCheck` skriver ut tilstanden til `XGStrategy`, om `OnLoadedSavedGameToStrategy` ble kjørt,
+   og sammenligner soldater, supplies og høyeste ObjectID med filen. Se deg rundt, lagre og last inn den nye lagringen.
+
+**Resultat 21.11.2026: virker.** `CoopStartStrategy` (med flagget) tok veien for innlastet lagring:
+`OnLoadedSavedGameToStrategy` ble kjørt, og `XGStrategy` endte i `Headquarters`. `FinishLoadGame` uten lagringsdata
+ga ingen feil, og `bPerformingStandardLoad` ble nullstilt av spillet. Soldater, supplies, objekter, ID-sum og høyeste
+ID var like. Antall rammer gikk fra 1528 til 1535, som er det spillet selv legger til ved innlasting. Fra Avengeren
+til ferdig innlastet tok det under 2 sekunder. Spilleren gjorde endringer, lagret, gikk til hovedmenyen og lastet den
+nye lagringen uten feil. Advarslene i loggen (filmscener i `AVG_QuartersCommander`, `State_UINarrative`) finnes også
+ved vanlige innlastinger. `plain` er ikke prøvd; det trengs ikke.
+
+Klientens del av fase 2 blir dermed: ta imot historikken, sett `ONLINEEVENTMGR.bPerformingStandardLoad = true`, åpne
+`Avenger_Root?game=XComGame.XComHeadQuartersGame?LoadingSave`.

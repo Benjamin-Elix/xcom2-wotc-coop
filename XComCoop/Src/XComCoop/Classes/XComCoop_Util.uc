@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------------------
 //  FILE:    XComCoop_Util.uc
-//  PURPOSE: Small shared helpers: Steam IDs, addresses, the online interfaces and the
-//           presentation layer.
+//  PURPOSE: Small shared helpers: Steam IDs, addresses, the online interfaces, the
+//           presentation layer and a fingerprint of the campaign history.
 //---------------------------------------------------------------------------------------
 class XComCoop_Util extends Object;
 
@@ -170,6 +170,103 @@ static function XComPresentationLayerBase GetPres()
 static function bool IsInShell()
 {
 	return XComShellPresentationLayer(GetPres()) != none;
+}
+
+/// True on the Avenger / Geoscape (strategy), false in the main menu and in missions.
+static function bool IsInStrategy()
+{
+	return XComHeadquartersGame(class'WorldInfo'.static.GetWorldInfo().Game) != none;
+}
+
+static function bool IsConnected()
+{
+	return `XCOMNETMANAGER.HasConnections();
+}
+
+/// Seconds since the current map was loaded. Only for measuring times on one map.
+static function float Now()
+{
+	return class'WorldInfo'.static.GetWorldInfo().RealTimeSeconds;
+}
+
+/// "12.3" for 12.345
+static function string FormatSeconds(float Seconds)
+{
+	local int Tenths;
+
+	Tenths = int(Seconds * 10.0 + 0.5);
+	return (Tenths / 10) $ "." $ (Tenths % 10);
+}
+
+// --- Fingerprint of a history ----------------------------------------------------------------
+
+/// A short summary of a history that both PCs can compare. Fields are separated by '|'.
+static function string HistoryFingerprint(XComGameStateHistory History)
+{
+	local XComGameState_BaseObject Obj;
+	local XComGameState_HeadquartersXCom XComHQ;
+	local XComGameState_GameTime GameTime;
+	local int NumObjects, IdSum, MaxId;
+	local string Result;
+
+	// bUnlimitedSearch: also count objects from before the last start state.
+	foreach History.IterateByClassType(class'XComGameState_BaseObject', Obj,, true)
+	{
+		NumObjects++;
+		IdSum += Obj.ObjectID;
+		MaxId = Max(MaxId, Obj.ObjectID);
+	}
+
+	Result = "frames=" $ (History.GetCurrentHistoryIndex() + 1)
+		$ "|objects=" $ NumObjects
+		$ "|idsum=" $ IdSum
+		$ "|maxid=" $ MaxId;
+
+	foreach History.IterateByClassType(class'XComGameState_HeadquartersXCom', XComHQ)
+	{
+		Result $= "|soldiers=" $ XComHQ.GetNumberOfSoldiers() $ "|supplies=" $ XComHQ.GetSupplies();
+		break;
+	}
+
+	foreach History.IterateByClassType(class'XComGameState_GameTime', GameTime)
+	{
+		Result $= "|date=" $ GameTime.CurrentTime.m_iYear $ "-" $ Pad(GameTime.CurrentTime.m_iMonth, 2) $ "-" $ Pad(GameTime.CurrentTime.m_iDay, 2)
+			$ "|hour=" $ int(GameTime.CurrentTime.m_fTime / 3600.0);
+		break;
+	}
+
+	return Result;
+}
+
+/// Lists the fields that differ between two fingerprints, as "[sent -> received]".
+static function string DescribeDifference(string Sent, string Received)
+{
+	local array<string> SentParts, ReceivedParts;
+	local string Result;
+	local int i;
+
+	ParseStringIntoArray(Sent, SentParts, "|", true);
+	ParseStringIntoArray(Received, ReceivedParts, "|", true);
+	for (i = 0; i < Max(SentParts.Length, ReceivedParts.Length); i++)
+	{
+		if (i >= SentParts.Length || i >= ReceivedParts.Length || SentParts[i] != ReceivedParts[i])
+		{
+			Result $= "[" $ (i < SentParts.Length ? SentParts[i] : "-") $ " -> " $ (i < ReceivedParts.Length ? ReceivedParts[i] : "-") $ "] ";
+		}
+	}
+	return Result;
+}
+
+static function string Pad(int Value, int Width)
+{
+	local string Text;
+
+	Text = string(Value);
+	while (Len(Text) < Width)
+	{
+		Text = "0" $ Text;
+	}
+	return Text;
 }
 
 static function Say(string Msg)

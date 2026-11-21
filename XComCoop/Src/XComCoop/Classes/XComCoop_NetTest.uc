@@ -217,6 +217,14 @@ function HistoryToFile()
 {
 	local bool bOk;
 
+	// Never overwrite the file with an empty history (e.g. typed in the main menu by mistake
+	// instead of CoopHistoryFromFile): the file may be the only copy of a campaign.
+	if (`XCOMHISTORY.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom', true) == none)
+	{
+		Say("CoopHistoryToFile: no campaign loaded, nothing written. The existing file is kept. (Did you mean CoopHistoryFromFile?)");
+		return;
+	}
+
 	bOk = `XCOMHISTORY.WriteHistoryToFile(HISTORY_FILE_FOLDER, HISTORY_FILE_NAME);
 	Say("CoopHistoryToFile: " $ (bOk ? "written" : "FAILED") $ " to My Games\\XCOM2 War of the Chosen\\XComGame\\" $ HISTORY_FILE_FOLDER $ HISTORY_FILE_NAME $ ".x2hist");
 	Say("CoopHistoryToFile: fingerprint " $ Fingerprint(`XCOMHISTORY));
@@ -478,42 +486,9 @@ static function Report(string Title, bool bOk, const out array<string> Problems,
 
 // --- Fingerprint ---------------------------------------------------------------------------
 
-/// A short summary of a history that both PCs can compare. Fields are separated by '|'.
 static function string Fingerprint(XComGameStateHistory History)
 {
-	local XComGameState_BaseObject Obj;
-	local XComGameState_HeadquartersXCom XComHQ;
-	local XComGameState_GameTime GameTime;
-	local int NumObjects, IdSum, MaxId;
-	local string Result;
-
-	// bUnlimitedSearch: also count objects from before the last start state.
-	foreach History.IterateByClassType(class'XComGameState_BaseObject', Obj,, true)
-	{
-		NumObjects++;
-		IdSum += Obj.ObjectID;
-		MaxId = Max(MaxId, Obj.ObjectID);
-	}
-
-	Result = "frames=" $ (History.GetCurrentHistoryIndex() + 1)
-		$ "|objects=" $ NumObjects
-		$ "|idsum=" $ IdSum
-		$ "|maxid=" $ MaxId;
-
-	foreach History.IterateByClassType(class'XComGameState_HeadquartersXCom', XComHQ)
-	{
-		Result $= "|soldiers=" $ XComHQ.GetNumberOfSoldiers() $ "|supplies=" $ XComHQ.GetSupplies();
-		break;
-	}
-
-	foreach History.IterateByClassType(class'XComGameState_GameTime', GameTime)
-	{
-		Result $= "|date=" $ GameTime.CurrentTime.m_iYear $ "-" $ Pad(GameTime.CurrentTime.m_iMonth, 2) $ "-" $ Pad(GameTime.CurrentTime.m_iDay, 2)
-			$ "|hour=" $ int(GameTime.CurrentTime.m_fTime / 3600.0);
-		break;
-	}
-
-	return Result;
+	return class'XComCoop_Util'.static.HistoryFingerprint(History);
 }
 
 function CompareReceived()
@@ -532,23 +507,9 @@ function CompareReceived()
 	}
 }
 
-/// Lists the fields that differ, as "name: sent -> received".
 static function string DescribeDifference(string Sent, string Received)
 {
-	local array<string> SentParts, ReceivedParts;
-	local string Result;
-	local int i;
-
-	ParseStringIntoArray(Sent, SentParts, "|", true);
-	ParseStringIntoArray(Received, ReceivedParts, "|", true);
-	for (i = 0; i < Max(SentParts.Length, ReceivedParts.Length); i++)
-	{
-		if (i >= SentParts.Length || i >= ReceivedParts.Length || SentParts[i] != ReceivedParts[i])
-		{
-			Result $= "[" $ (i < SentParts.Length ? SentParts[i] : "-") $ " -> " $ (i < ReceivedParts.Length ? ReceivedParts[i] : "-") $ "] ";
-		}
-	}
-	return Result;
+	return class'XComCoop_Util'.static.DescribeDifference(Sent, Received);
 }
 
 // --- Helpers -------------------------------------------------------------------------------
@@ -589,14 +550,7 @@ function string Clock()
 
 static function string Pad(int Value, int Width)
 {
-	local string Text;
-
-	Text = string(Value);
-	while (Len(Text) < Width)
-	{
-		Text = "0" $ Text;
-	}
-	return Text;
+	return class'XComCoop_Util'.static.Pad(Value, Width);
 }
 
 static function Say(string Msg)
