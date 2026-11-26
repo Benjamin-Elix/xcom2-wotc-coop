@@ -27,6 +27,17 @@ Brukeren skriver norsk; svar på norsk.
   («World ... not cleaned up by garbage collection»). Slå opp skjermen når du trenger den. La skjermen selv spørre
   etter endringer med en timer på seg selv (se `XComCoop_UILobby.Poll`). Timere og delegater skal peke *fra*
   actoren *til* det varige objektet, ikke omvendt.
+- **Lag aldri en Steam-lobby** (`CreateLobby`). Spillet starter da en Steam-spillserver som tar over alle
+  Steam-tilkoblingene til spillet lukkes, og ID-en dens kan ikke leses fra skriptet. Se
+  [docs/KARTLEGGING-NETTVERK.md](docs/KARTLEGGING-NETTVERK.md).
+- **Kall aldri `Disconnect`** (eller `StartServer`, som kobler fra) inne i `OnNotifyConnectionClosed` uten å bytte
+  tilstand først. Spillet melder da den samme tilkoblingen på nytt, og det går i ring til spillet krasjer.
+- **Slå på Steam-relé før hver co-op-tilkobling** (`XComCoop_Util.SetSteamRelay`, før `CreateServer`/`CreateClient`).
+  Spillet slår det av når Steam starter. Uten relé når ikke to vanlige hjemmenett hverandre: forespørselen kommer
+  aldri fram til verten. Se [docs/KARTLEGGING-NETTVERK.md](docs/KARTLEGGING-NETTVERK.md).
+- **Timere for objekter som ikke er actors** (`XComCoop_Session`, testklassene) går gjennom `XComCoop_Timers`
+  (`Schedule`, `Cancel`, `IsScheduled`). Aldri `WorldInfo.SetTimer`: `WorldInfo` har `bTickIsDisabled=true` i
+  XCOM 2, så tidtakere på den går aldri av.
 
 ## Bygge
 

@@ -1,8 +1,9 @@
 //---------------------------------------------------------------------------------------
 //  FILE:    XComCoop_UILobby.uc
 //  PURPOSE: The co-op screen. Shows the session state, the two players, the result of the
-//           compatibility check, (for the host) online friends to invite, and on the
-//           Avenger the button that sends the campaign to the other player.
+//           compatibility check, online friends (the host invites one; in the main menu
+//           the other player clicks the friend who hosts), and on the Avenger the button
+//           that sends the campaign to the other player.
 //           All logic lives in XComCoop_Session; this screen only draws it.
 //
 //           Closing the screen (CLOSE, Esc) keeps the session; LEAVE ends it. The CO-OP
@@ -46,9 +47,7 @@ var localized string strTitle;
 var localized string strHostSubtitle;
 var localized string strClientSubtitle;
 var localized string strStateIdle;
-var localized string strStateCreatingLobby;
 var localized string strStateWaitingForPlayer;
-var localized string strStateJoiningLobby;
 var localized string strStateConnecting;
 var localized string strStateChecking;
 var localized string strStateReady;
@@ -71,6 +70,7 @@ var localized string strPlayer2;
 var localized string strYou;
 var localized string strNobodyYet;
 var localized string strInviteHeader;
+var localized string strJoinHeader;
 var localized string strNoFriendsOnline;
 var localized string strPlayingXCOM;
 var localized string strInvited;
@@ -162,7 +162,7 @@ simulated function Refresh()
 	local XComCoop_Session Session;
 	local string Text, MyName, OtherName;
 	local int i;
-	local bool bShowInvites;
+	local bool bShowFriends;
 
 	Session = class'XComCoop_Session'.static.Get();
 	LastChangeCount = Session.ChangeCount;
@@ -205,11 +205,12 @@ simulated function Refresh()
 
 	StatusText.SetHtmlText(Text);
 
-	bShowInvites = Session.bIsHost && Session.SessionState == eCoopState_WaitingForPlayer;
-	InviteLabel.SetVisible(bShowInvites);
-	FriendsList.SetVisible(bShowInvites);
-	RefreshButton.SetVisible(bShowInvites);
-	RetryButton.SetVisible(Session.bIsHost && Session.bInLobby && Session.SessionState == eCoopState_Failed);
+	bShowFriends = ShowsInviteList(Session) || ShowsJoinList(Session);
+	InviteLabel.SetText(ShowsJoinList(Session) ? strJoinHeader : strInviteHeader);
+	InviteLabel.SetVisible(bShowFriends);
+	FriendsList.SetVisible(bShowFriends);
+	RefreshButton.SetVisible(bShowFriends);
+	RetryButton.SetVisible(Session.bIsHost && Session.bHosting && Session.SessionState == eCoopState_Failed);
 	StartButton.SetVisible(Session.bIsHost && Session.SessionState == eCoopState_Ready && class'XComCoop_Util'.static.IsInStrategy());
 }
 
@@ -220,9 +221,7 @@ simulated function string StateText(XComCoop_Session Session)
 	switch (Session.SessionState)
 	{
 	case eCoopState_Idle:              return strStateIdle;
-	case eCoopState_CreatingLobby:     return strStateCreatingLobby;
 	case eCoopState_WaitingForPlayer:  return strStateWaitingForPlayer;
-	case eCoopState_JoiningLobby:      return strStateJoiningLobby;
 	case eCoopState_Connecting:        return strStateConnecting;
 	case eCoopState_Checking:          return strStateChecking;
 	case eCoopState_Ready:
@@ -247,6 +246,18 @@ simulated function string StateText(XComCoop_Session Session)
 		return class'UIUtilities_Text'.static.GetColoredText(strStateFailed, eUIState_Bad);
 	}
 	return "";
+}
+
+/// The host waits for a player: clicking a friend sends an invite.
+simulated function bool ShowsInviteList(XComCoop_Session Session)
+{
+	return Session.bIsHost && Session.SessionState == eCoopState_WaitingForPlayer;
+}
+
+/// Not in a session, in the main menu: clicking a friend joins that friend, who must be hosting.
+simulated function bool ShowsJoinList(XComCoop_Session Session)
+{
+	return !Session.bIsHost && !Session.IsActive() && class'XComCoop_Util'.static.IsInShell();
 }
 
 /// The connection line only makes sense once the two players have found each other.
@@ -335,11 +346,23 @@ simulated function bool IsInvited(UniqueNetId Id)
 
 simulated function OnFriendClicked(UIList ContainerList, int ItemIndex)
 {
+	local XComCoop_Session Session;
+
 	if (ItemIndex < 0 || ItemIndex >= ShownFriends.Length)
 	{
 		return;
 	}
-	if (class'XComCoop_Session'.static.Get().Invite(ShownFriends[ItemIndex].UniqueId, ShownFriends[ItemIndex].NickName))
+	Session = class'XComCoop_Session'.static.Get();
+	if (ShowsJoinList(Session))
+	{
+		Session.Join(ShownFriends[ItemIndex].UniqueId);
+		return;
+	}
+	if (!ShowsInviteList(Session))
+	{
+		return;
+	}
+	if (Session.Invite(ShownFriends[ItemIndex].UniqueId, ShownFriends[ItemIndex].NickName))
 	{
 		if (!IsInvited(ShownFriends[ItemIndex].UniqueId))
 		{

@@ -41,6 +41,7 @@
     <Content Include="Src\XComCoop\Classes\XComCoop_RollbackTest.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_Session.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_StrategyStartTest.uc" />
+    <Content Include="Src\XComCoop\Classes\XComCoop_Timers.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UIPauseMenuListener.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UILobby.uc" />
     <Content Include="Src\XComCoop\Classes\XComCoop_UIShellListener.uc" />

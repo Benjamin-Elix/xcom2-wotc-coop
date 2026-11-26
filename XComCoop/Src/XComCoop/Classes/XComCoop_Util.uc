@@ -17,6 +17,26 @@ static function OnlineGameInterfaceXCom GetGameInterface()
 	return OnlineGameInterfaceXCom(OnlineSub.GameInterface);
 }
 
+/// Turns Steam's P2P relay on or off for this player's own Steam connection.
+///
+/// XCOM turns relay off when Steam starts: UOnlineSubsystemSteamworks' init calls
+/// SteamNetworking()->AllowP2PPacketRelay(false) (XCom2.exe, found 22.11.2026). Without relay
+/// two players only reach each other if their routers let a direct connection through, and
+/// that failed between two ordinary home networks: the host never saw a request
+/// (docs/KARTLEGGING-NETTVERK.md). Steam game servers keep relay on.
+/// bForceClient=true: the player's own connection even when a Steam game server exists.
+/// Steam applies the setting to connections made after the call.
+static function SetSteamRelay(bool bAllow)
+{
+	local OnlineGameInterfaceXCom GameInterface;
+
+	GameInterface = GetGameInterface();
+	if (GameInterface != none)
+	{
+		GameInterface.AllowP2PPacketRelay(bAllow, true);
+	}
+}
+
 static function OnlinePlayerInterface GetPlayerInterface()
 {
 	local OnlineSubsystem OnlineSub;

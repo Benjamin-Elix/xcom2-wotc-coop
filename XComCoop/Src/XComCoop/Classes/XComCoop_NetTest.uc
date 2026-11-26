@@ -72,6 +72,8 @@ function Host()
 
 	AddDelegates();
 	bCompatSent = false;
+	// Same as the co-op session (see XComCoop_Util.SetSteamRelay).
+	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
 	ServerURL.Port = class'XComCoop_Config'.default.TestNetPort;
 	ServerURL.Op.AddItem("steamsockets");
 	bOk = NetMgr.CreateServer(ServerURL, Error);
@@ -81,7 +83,8 @@ function Host()
 		return;
 	}
 
-	Say("CoopNetHost: server started on port " $ ServerURL.Port $ " (returned " $ bOk $ ") at " $ Clock());
+	Say("CoopNetHost: server started on port " $ ServerURL.Port $ " (returned " $ bOk $ ", relay="
+		$ class'XComCoop_Config'.default.bAllowSteamRelay $ ") at " $ Clock());
 	if (class'X2DownloadableContentInfo_XComCoopTests'.static.GetMyId(MyId))
 	{
 		Say("CoopNetHost: the other player runs:  CoopNetJoin " $ class'OnlineSubsystem'.static.UniqueNetIdToHexString(MyId));
@@ -115,6 +118,7 @@ function Join(string HostId)
 	AddDelegates();
 	bJoined = false;
 	bCompatSent = false;
+	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
 	ClientURL.Host = Address;
 	ClientURL.Port = class'XComCoop_Config'.default.TestNetPort;
 	ClientURL.Op.AddItem("steamsockets");
@@ -125,7 +129,8 @@ function Join(string HostId)
 		return;
 	}
 
-	Say("CoopNetJoin: connecting to " $ Address $ ":" $ ClientURL.Port $ " (returned " $ bOk $ ") at " $ Clock());
+	Say("CoopNetJoin: connecting to " $ Address $ ":" $ ClientURL.Port $ " (returned " $ bOk $ ", relay="
+		$ class'XComCoop_Config'.default.bAllowSteamRelay $ ") at " $ Clock());
 
 	// Same as the game's own flow: ask the server for a connection after a short delay.
 	ConnectAttemptsLeft = class'XComCoop_Config'.default.TestConnectAttempts;
@@ -234,7 +239,7 @@ function HistoryToFile()
 
 function ScheduleConnectAttempt()
 {
-	class'Engine'.static.GetCurrentWorldInfo().SetTimer(class'XComCoop_Config'.default.TestConnectRetrySeconds, false, nameof(ConnectAttempt), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.TestConnectRetrySeconds, false, nameof(ConnectAttempt), self);
 }
 
 function ConnectAttempt()

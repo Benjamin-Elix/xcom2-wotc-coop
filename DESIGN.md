@@ -8,7 +8,7 @@ Dette dokumentet er kilden til sannhet for designet. Alle tall som nevnes her sk
 
 ## 1. Nettverk
 
-- **Steam-lobby**, hvem som helst av spillerne kan hoste.
+- **Over Steam (P2P)**, hvem som helst av spillerne kan hoste. Ingen Steam-lobby (se fase 1).
 - **Verten regner ut** odds og RNG. Klienten viser bare resultatet.
 - Alt skjer **automatisk**, uten godkjenn-knapper.
 - **Kampanjen synkes til begge** etter lagring og etter hvert oppdrag, slik at den andre kan hoste neste gang.
@@ -105,13 +105,21 @@ Lobby, invitasjon, sjekk av mods og versjon.
   Er minst ett av byggene laget med ucommittede endringer (`-dirty`), gir ulik byggversjon en advarsel.
 - Avvik i spillets byggversjon gir bare en advarsel. `bRequireIdenticalModList=false` gjør avvik i modlisten om til advarsler.
 - Flyten (`XComCoop_Session`, skjerm `XComCoop_UILobby`):
-  1. Verten trykker CO-OP i hovedmenyen. Det lager en Steam-lobby og starter spillserveren (Steam sockets).
-  2. Verten inviterer en venn fra listen på skjermen.
-  3. Vennen får et spørsmål i spillet og kobler rett til den som sendte invitasjonen. Vennen blir ikke med i
-     Steam-lobbyen: spillets egen kode for Steam-lobbyer krasjer hos verten når et nytt medlem kommer inn (funnet
-     22.11.2026), og lobbyen trengs bare for å sende invitasjonen.
+  1. Verten trykker CO-OP i pausemenyen på Avengeren. Det starter tjeneren (Steam sockets), som lytter på spillerens
+     egen Steam-ID. Ingen Steam-lobby: en lobby starter en Steam-spillserver som tar over spillets Steam-tilkoblinger
+     til spillet lukkes, og ID-en dens kan ikke leses fra skriptet. Spillets egen kode krasjer dessuten hos verten
+     når et nytt medlem blir med i en lobby (begge funnet 22.11.2026, se
+     [docs/KARTLEGGING-NETTVERK.md](docs/KARTLEGGING-NETTVERK.md)).
+     Begge slår på Steams relé før tilkoblingen og av igjen etterpå (`XComCoop_Util.SetSteamRelay`). Spillet slår
+     det av når Steam starter, og uten relé nådde ikke to vanlige hjemmenett hverandre.
+  2. Verten inviterer en venn fra listen på skjermen. Invitasjonen er en Steam-chatmelding som begynner med
+     `[XComCoop invite]`, og spillet til vennen gjør den om til et JOIN-spørsmål.
+     **Virker ikke:** `SendMessageToFriend` åpner bare Steam-chatten i overlayet og sender ingenting (testet
+     22.11.2026). Vennen må klikke på verten i hovedmenyen (punkt 3) inntil dette er avgjort.
+  3. Vennen trykker JOIN, eller åpner CO-OP i hovedmenyen og klikker på verten i vennelisten. Spillet kobler rett
+     til vertens Steam-ID.
   4. Begge sender `XComCoop_CompatInfo`. Svaret er «klar», eller en liste over hva som er feil.
-  5. Lobbyen forteller bare hvem verten er. All spilltrafikk går gjennom `XComGameStateNetworkManager`.
+  5. All spilltrafikk går gjennom `XComGameStateNetworkManager`.
 - Invitasjoner tas bare imot i hovedmenyen i fase 1. Oppstart av spillet fra en Steam-invitasjon kommer i fase 7.
 
 ### Fase 2: Strategisynk én vei

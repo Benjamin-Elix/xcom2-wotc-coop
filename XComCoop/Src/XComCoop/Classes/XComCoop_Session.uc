@@ -1,13 +1,16 @@
 //---------------------------------------------------------------------------------------
 //  FILE:    XComCoop_Session.uc
-//  PURPOSE: The co-op session. Owns the Steam lobby, the network connection, the
-//           compatibility check (phase 1) and handing the host's campaign to the client
-//           (phase 2), and tells the UI when anything changes.
+//  PURPOSE: The co-op session. Owns the network connection, invites, the compatibility
+//           check (phase 1) and handing the host's campaign to the client (phase 2), and
+//           tells the UI when anything changes.
 //
-//  Host:   Host() -> CreateLobby -> start the game server (Steam sockets) -> Invite(friend)
-//  Client: invite received -> popup -> Join() -> connect to the player who sent the invite
-//          (the client does not join the Steam lobby; see Join)
+//  Host:   Host() -> start the server (Steam sockets) -> Invite(friend): a Steam chat message
+//  Client: invite message arrives -> popup -> Join(host), or the player picks the host from
+//          the friends list in the main menu -> connect straight to the host's Steam ID
 //  Both:   connected -> exchange XComCoop_CompatInfo -> Ready, or Failed with clear reasons
+//
+//  No Steam lobbies (see Host): creating one starts a Steam game server that takes over the
+//  game's Steam sockets until the game is closed, and its ID cannot be read from script.
 //
 //  Phase 2, first step (the client gets a copy of the host's campaign):
 //  Host on the Avenger, Ready: StartCampaign() -> announce fingerprint -> SendHistory
@@ -24,18 +27,16 @@
 //          when CMD_MIRROR arrives, so the host's frames land on a clean history, and by a
 //          guard timer every MirrorGuardSeconds in case the order is not kept.
 //
-//  The lobby only tells the client who the host is; all game traffic goes through
-//  XComGameStateNetworkManager. The class default object (Get()) holds the state, so it
-//  survives map changes and is never garbage collected.
+//  All game traffic goes through XComGameStateNetworkManager. The class default object
+//  (Get()) holds the state, so it survives map changes and is never garbage collected. Its
+//  timers run on XComCoop_Timers, because timers set on WorldInfo never fire in XCOM 2.
 //---------------------------------------------------------------------------------------
 class XComCoop_Session extends Object dependson(XComCoop_CompatInfo);
 
 enum ECoopSessionState
 {
 	eCoopState_Idle,
-	eCoopState_CreatingLobby,       // host: waiting for Steam
-	eCoopState_WaitingForPlayer,    // host: lobby open, server listening
-	eCoopState_JoiningLobby,        // client: waiting for Steam
+	eCoopState_WaitingForPlayer,    // host: server listening, invites can go out
 	eCoopState_Connecting,          // client: connecting to the host
 	eCoopState_Checking,            // both: connected, comparing versions and mods
 	eCoopState_Ready,               // both: connected and compatible
@@ -56,6 +57,10 @@ const CMD_CLOCK = "XComCoopClock";                  // host -> client: the Geosc
 const CMD_MOVE = "XComCoopMove";                    // host -> client: position of a flying airship (id, x, y, z, pitch, yaw, roll)
 const CMD_POPUP = "XComCoopPopup";                  // host -> client: a popup the host was shown (DynamicPropertySet)
 const CMD_HOST_MISSION = "XComCoopHostMission";     // host -> client: the host went on a mission
+
+// An invite is a Steam chat message that starts with this. The rest is text for a person,
+// for when the message also shows up in the friend's Steam chat.
+const INVITE_PREFIX = "[XComCoop invite]";
 
 // How many popups wait at most on either side (a safety cap, not a gameplay value).
 const MAX_POPUPS = 20;
@@ -88,17 +93,16 @@ const STRATEGY_LOAD_COMMAND = "open Avenger_Root?game=XComGame.XComHeadQuartersG
 
 var ECoopSessionState SessionState;
 var bool bIsHost;
-var UniqueNetId LobbyId;
 var UniqueNetId HostId;
 var string OtherPlayerName;
 var array<string> Problems;     // why we failed, shown to the player
 var array<string> Warnings;     // shown but not blocking
 var array<string> Notices;      // short info lines, e.g. "invite sent"
 
-var bool bLobbyDelegatesAdded;
+var bool bInviteDelegateAdded;
 var bool bNetDelegatesAdded;
 var bool bCompatSent;
-var bool bInLobby;
+var bool bHosting;                  // host: the server is up and invites can go out
 var int ConnectAttemptsLeft;
 
 // Phase 2: handing over the campaign
@@ -144,23 +148,21 @@ var bool bScreenRefreshPending;     // client: the open screen should be redrawn
 var float LastScreenRefresh;        // client, Util.Now() of the last redraw
 var bool bResendWhenReady;          // host: send the whole campaign once strategy has loaded
 
-// An invite that arrived while we were not in a lobby, waiting for the player's answer.
-var UniqueNetId PendingInviteLobbyId;
-var UniqueNetId PendingInviteFriendId;      // who sent it; the client connects to this player
+// An invite waiting for the player's answer: who sent it. The client connects to this player.
+var UniqueNetId PendingInviteFriendId;
 
 // Goes up by one on every change. The lobby screen polls it with its own timer. The session
 // lives for the whole game, so it must never hold a reference to a screen or other actor:
 // the old map could then not be garbage collected and loading a save crashes.
 var int ChangeCount;
 
-var localized string strCreateLobbyFailed;
-var localized string strJoinLobbyFailed;
 var localized string strServerFailed;
 var localized string strConnectFailed;
 var localized string strConnectionLost;
 var localized string strPlayerLeft;
 var localized string strInviteSent;
 var localized string strInviteFailed;
+var localized string strInviteChat;
 var localized string strSomeone;
 var localized string strInviteTitle;
 var localized string strInviteText;
@@ -188,35 +190,27 @@ static function XComCoop_Session Get()
 
 // --- Setup -----------------------------------------------------------------------------------
 
-/// Registers the lobby delegates. Called from the main menu, so invites are caught even
-/// before the player opens the co-op screen.
+/// Listens for invites (Steam chat messages from friends). Called from the main menu, so
+/// invites are caught even before the player opens the co-op screen.
 function Init()
 {
-	local OnlineGameInterfaceXCom GameInterface;
 	local OnlinePlayerInterface PlayerInterface;
 
-	if (bLobbyDelegatesAdded)
+	if (bInviteDelegateAdded)
 	{
 		return;
 	}
-	GameInterface = class'XComCoop_Util'.static.GetGameInterface();
-	if (GameInterface == none)
+	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
+	if (PlayerInterface == none)
 	{
-		Say("Session: Steam game interface not available, co-op is disabled");
+		Say("Session: Steam is not available, co-op is disabled");
 		return;
 	}
-	GameInterface.AddCreateLobbyCompleteDelegate(HandleCreateLobbyComplete);
-	GameInterface.AddJoinLobbyCompleteDelegate(HandleJoinLobbyComplete);
-	GameInterface.AddLobbyMemberStatusUpdateDelegate(HandleLobbyMemberStatusUpdate);
-	GameInterface.AddLobbyInviteDelegate(HandleLobbyInvite);
-	bLobbyDelegatesAdded = true;
+	PlayerInterface.AddFriendMessageReceivedDelegate(0, HandleFriendMessage);
+	bInviteDelegateAdded = true;
 
 	// Warm up the friends list so names are known when an invite arrives.
-	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
-	if (PlayerInterface != none)
-	{
-		PlayerInterface.ReadFriendsList(0);
-	}
+	PlayerInterface.ReadFriendsList(0);
 	Say("Session: ready for co-op invites");
 }
 
@@ -241,42 +235,35 @@ function AddNetDelegates()
 
 // --- Commands from the UI --------------------------------------------------------------------
 
-/// Creates a Steam lobby and starts listening for the other player.
+/// Starts listening for the other player, who connects straight to this player's Steam ID.
+///
+/// No Steam lobby (tested between two PCs on 22.11.2026, see docs/KARTLEGGING-NETTVERK.md):
+/// creating one starts a Steam game server, and from then until the game is closed the
+/// game's Steam sockets go through that game server, both in and out. Its ID cannot be read
+/// from script, so the other player could not find it. Invites go as Steam chat messages.
 function Host()
 {
-	local OnlineGameInterfaceXCom GameInterface;
-	local EOnlineGameInterfaceXCom_LobbyVisibility Visibility;
-
 	if (IsActive())
 	{
 		return;
 	}
 	Reset();
 	Init();
-	GameInterface = class'XComCoop_Util'.static.GetGameInterface();
-	if (GameInterface == none)
-	{
-		Fail(strCreateLobbyFailed);
-		return;
-	}
 
 	bIsHost = true;
-	SetState(eCoopState_CreatingLobby);
-	Visibility = class'XComCoop_Config'.default.bLobbyVisibleToFriends ? XLV_Friends : XLV_Private;
-	if (!GameInterface.CreateLobby(class'XComCoop_Config'.default.MaxPlayers, Visibility))
+	class'XComCoop_Util'.static.GetMyId(HostId);
+	if (!StartServer())
 	{
-		Fail(strCreateLobbyFailed);
+		Fail(strServerFailed);
+		return;
 	}
+	bHosting = true;
+	SetState(eCoopState_WaitingForPlayer);
 }
 
-/// Answers an invite: connects straight to the player who sent it.
-///
-/// The client does not join the Steam lobby. When a second member joins, the game's
-/// native Steam lobby code on the host crashes (access violation in XCom2.exe while
-/// handling the Steam lobby callback, 2026-11-22). The game's own multiplayer never
-/// uses Steam lobbies, only cheats do. The invite already says who the host is, and that
-/// is all the lobby was used for.
-function Join(UniqueNetId InLobbyId, UniqueNetId InviterId)
+/// Connects to a friend who hosts: after an invite, or when the player picked the friend
+/// from the list in the main menu.
+function Join(UniqueNetId InHostId)
 {
 	if (IsActive())
 	{
@@ -286,25 +273,28 @@ function Join(UniqueNetId InLobbyId, UniqueNetId InviterId)
 	Init();
 
 	bIsHost = false;
-	LobbyId = InLobbyId;
-	HostId = InviterId;
+	HostId = InHostId;
 	OtherPlayerName = class'XComCoop_Util'.static.GetFriendName(HostId);
-	Say("Session: answering the invite from " $ OtherName() $ " without joining the Steam lobby");
+	Say("Session: joining " $ OtherName());
 	Connect();
 }
 
-/// Invites a friend to our lobby (host only).
+/// Host only: invites a friend with a Steam chat message, which the friend's game turns into
+/// a JOIN dialog (HandleFriendMessage). If it does not arrive, the friend can still pick the
+/// host from the list in the main menu.
 function bool Invite(UniqueNetId FriendId, string FriendName)
 {
-	local OnlineGameInterfaceXCom GameInterface;
+	local OnlinePlayerInterface PlayerInterface;
+	local string Message;
 	local bool bOk;
 
-	if (!bIsHost || !bInLobby)
+	if (!bIsHost || !bHosting)
 	{
 		return false;
 	}
-	GameInterface = class'XComCoop_Util'.static.GetGameInterface();
-	bOk = GameInterface != none && GameInterface.InviteToLobby(LobbyId, FriendId);
+	PlayerInterface = class'XComCoop_Util'.static.GetPlayerInterface();
+	Message = INVITE_PREFIX $ " " $ Repl(strInviteChat, "%PLAYER", class'XComCoop_Util'.static.GetMyName());
+	bOk = PlayerInterface != none && PlayerInterface.SendMessageToFriend(0, FriendId, Message);
 	Notices.AddItem(Repl(bOk ? strInviteSent : strInviteFailed, "%PLAYER", FriendName));
 	Say("Session: invite to " $ FriendName $ " " $ (bOk ? "sent" : "FAILED"));
 	NotifyChanged();
@@ -314,7 +304,7 @@ function bool Invite(UniqueNetId FriendId, string FriendName)
 /// Host only: back to waiting for a player after a failed check.
 function ResumeHosting()
 {
-	if (!bIsHost || !bInLobby)
+	if (!bIsHost || !bHosting)
 	{
 		return;
 	}
@@ -330,11 +320,10 @@ function ResumeHosting()
 	SetState(eCoopState_WaitingForPlayer);
 }
 
-/// Leaves the lobby and closes the connection. With bKeepProblems the state ends as
-/// Failed and the reasons stay visible; otherwise it ends as Idle.
+/// Closes the connection and stops hosting. With bKeepProblems the state ends as Failed and
+/// the reasons stay visible; otherwise it ends as Idle.
 function Leave(optional bool bKeepProblems)
 {
-	local OnlineGameInterfaceXCom GameInterface;
 	local XComGameStateNetworkManager NetMgr;
 	local array<string> KeptProblems, KeptWarnings;
 
@@ -355,15 +344,9 @@ function Leave(optional bool bKeepProblems)
 	{
 		NetMgr.Disconnect();
 	}
-	if (bInLobby)
-	{
-		GameInterface = class'XComCoop_Util'.static.GetGameInterface();
-		if (GameInterface != none)
-		{
-			GameInterface.LeaveLobby(LobbyId);
-		}
-		bInLobby = false;
-	}
+	// Back to the game's own setting, so its multiplayer behaves as before.
+	class'XComCoop_Util'.static.SetSteamRelay(false);
+	bHosting = false;
 	Say("Session: left");
 	Reset();
 	if (bKeepProblems && KeptProblems.Length > 0)
@@ -380,98 +363,36 @@ function bool IsActive()
 	return SessionState != eCoopState_Idle && SessionState != eCoopState_Failed;
 }
 
-// --- Lobby callbacks -------------------------------------------------------------------------
+// --- Invites ---------------------------------------------------------------------------------
 
-function HandleCreateLobbyComplete(bool bWasSuccessful, UniqueNetId InLobbyId, string Error)
-{
-	Say("Session: lobby created=" $ bWasSuccessful $ " id=" $ class'XComCoop_Util'.static.IdToHex(InLobbyId) $ " error='" $ Error $ "'");
-	if (!bIsHost || SessionState != eCoopState_CreatingLobby)
-	{
-		return;
-	}
-	if (!bWasSuccessful)
-	{
-		Fail(strCreateLobbyFailed $ (Error != "" ? " (" $ Error $ ")" : ""));
-		return;
-	}
-
-	LobbyId = InLobbyId;
-	bInLobby = true;
-	class'XComCoop_Util'.static.GetMyId(HostId);
-	if (!StartServer())
-	{
-		Fail(strServerFailed);
-		return;
-	}
-	SetState(eCoopState_WaitingForPlayer);
-}
-
-function HandleJoinLobbyComplete(bool bWasSuccessful, const out array<OnlineGameInterfaceXCom_ActiveLobbyInfo> LobbyList, int LobbyIndex, UniqueNetId LobbyUID, string Error)
-{
-	local OnlineGameInterfaceXCom GameInterface;
-
-	Say("Session: joined lobby=" $ bWasSuccessful $ " id=" $ class'XComCoop_Util'.static.IdToHex(LobbyUID) $ " error='" $ Error $ "'");
-
-	// CreateLobby also joins the new lobby, so the host gets this too.
-	if (bIsHost || SessionState != eCoopState_JoiningLobby || LobbyUID != LobbyId)
-	{
-		return;
-	}
-	if (!bWasSuccessful)
-	{
-		Fail(strJoinLobbyFailed $ (Error != "" ? " (" $ Error $ ")" : ""));
-		return;
-	}
-	bInLobby = true;
-
-	GameInterface = class'XComCoop_Util'.static.GetGameInterface();
-	if (!GameInterface.GetLobbyAdmin(LobbyId, HostId))
-	{
-		Fail(strJoinLobbyFailed);
-		return;
-	}
-	OtherPlayerName = class'XComCoop_Util'.static.GetFriendName(HostId);
-	Connect();
-}
-
-function HandleLobbyMemberStatusUpdate(const out array<OnlineGameInterfaceXCom_ActiveLobbyInfo> LobbyList, int LobbyIndex, int MemberIndex, int InstigatorIndex, string Status)
-{
-	Say("Session: lobby member " $ MemberIndex $ " status '" $ Status $ "'");
-}
-
-/// Called when an invite arrives (bAccepted=false) or when the player accepted one in the
-/// Steam overlay (bAccepted=true).
-function HandleLobbyInvite(UniqueNetId InLobbyId, UniqueNetId FriendId, bool bAccepted)
+/// Every Steam chat message from a friend comes here while the game runs. Only the ones that
+/// start with INVITE_PREFIX are invites (see Invite).
+function HandleFriendMessage(byte LocalUserNum, UniqueNetId SendingPlayer, string SendingNick, string Message)
 {
 	local string FriendName;
 
-	FriendName = class'XComCoop_Util'.static.GetFriendName(FriendId);
+	if (Left(Message, Len(INVITE_PREFIX)) != INVITE_PREFIX)
+	{
+		return;
+	}
+	FriendName = SendingNick != "" ? SendingNick : class'XComCoop_Util'.static.GetFriendName(SendingPlayer);
 	if (FriendName == "")
 	{
 		FriendName = strSomeone;
 	}
-	Say("Session: invite from " $ FriendName $ " to lobby " $ class'XComCoop_Util'.static.IdToHex(InLobbyId) $ " accepted=" $ bAccepted);
+	Say("Session: invite from " $ FriendName);
 
-	if (InLobbyId == LobbyId && IsActive())
+	if (IsActive() && HostId == SendingPlayer)
 	{
 		return;
 	}
-
 	if (!class'XComCoop_Util'.static.IsInShell())
 	{
-		// Phase 1 only joins from the main menu.
+		// Only joins from the main menu.
 		ShowMessage(strInviteTitle, Repl(strInviteNotInMenu, "%PLAYER", FriendName));
 		return;
 	}
-
-	if (bAccepted)
-	{
-		AcceptInvite(InLobbyId, FriendId);
-		return;
-	}
-
-	PendingInviteLobbyId = InLobbyId;
-	PendingInviteFriendId = FriendId;
+	PendingInviteFriendId = SendingPlayer;
 	ShowInviteDialog(FriendName);
 }
 
@@ -500,16 +421,15 @@ function HandleInviteDialog(Name eAction)
 
 	if (eAction == 'eUIAction_Accept' && PendingInviteFriendId != EmptyId)
 	{
-		AcceptInvite(PendingInviteLobbyId, PendingInviteFriendId);
+		AcceptInvite(PendingInviteFriendId);
 	}
-	PendingInviteLobbyId = EmptyId;
 	PendingInviteFriendId = EmptyId;
 }
 
-function AcceptInvite(UniqueNetId InLobbyId, UniqueNetId InviterId)
+function AcceptInvite(UniqueNetId InviterId)
 {
 	class'XComCoop_UILobby'.static.Open();
-	Join(InLobbyId, InviterId);
+	Join(InviterId);
 }
 
 function ShowMessage(string Title, string Text)
@@ -543,11 +463,26 @@ function bool StartServer()
 		NetMgr.Disconnect();
 	}
 	AddNetDelegates();
+	// Before the server exists, so the client's connection can use Steam's relay.
+	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
 	ServerURL.Port = class'XComCoop_Config'.default.NetPort;
 	ServerURL.Op.AddItem("steamsockets");
 	NetMgr.CreateServer(ServerURL, Error);
-	Say("Session: server on port " $ ServerURL.Port $ " error='" $ Error $ "'");
+	Say("Session: server on port " $ ServerURL.Port $ " relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay $ " error='" $ Error $ "'");
 	return Error == "";
+}
+
+/// Host: listens again after the other player left (see HandleConnectionClosed).
+function RestartServer()
+{
+	if (!bIsHost || !bHosting || SessionState != eCoopState_WaitingForPlayer)
+	{
+		return;
+	}
+	if (!StartServer())
+	{
+		Fail(strServerFailed);
+	}
 }
 
 function Connect()
@@ -562,12 +497,15 @@ function Connect()
 		NetMgr.Disconnect();
 	}
 	AddNetDelegates();
+	// Straight to the host's own Steam ID. That only works because nobody makes a Steam
+	// lobby (see Host), and with Steam's relay on (see XComCoop_Util.SetSteamRelay).
+	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
 	ClientURL.Host = class'XComCoop_Util'.static.IdToSteamAddress(HostId);
 	ClientURL.Port = class'XComCoop_Config'.default.NetPort;
 	ClientURL.Op.AddItem("steamsockets");
 	SetState(eCoopState_Connecting);
 	NetMgr.CreateClient(ClientURL, Error);
-	Say("Session: connecting to " $ ClientURL.Host $ ":" $ ClientURL.Port $ " error='" $ Error $ "'");
+	Say("Session: connecting to " $ ClientURL.Host $ ":" $ ClientURL.Port $ " relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay $ " error='" $ Error $ "'");
 	if (Error != "")
 	{
 		Fail(strConnectFailed);
@@ -581,7 +519,7 @@ function Connect()
 
 function ScheduleConnectAttempt()
 {
-	class'Engine'.static.GetCurrentWorldInfo().SetTimer(class'XComCoop_Config'.default.ConnectRetrySeconds, false, nameof(ConnectAttempt), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.ConnectRetrySeconds, false, nameof(ConnectAttempt), self);
 }
 
 function ConnectAttempt()
@@ -603,11 +541,12 @@ function ConnectAttempt()
 
 function HandlePlayerJoined(string RequestURL, string Address, const UniqueNetId UniqueId, bool bSupportsAuth)
 {
-	Say("Session: connected to the host");
-	if (SessionState != eCoopState_Connecting)
+	// The host gets this too, when a client has connected.
+	if (bIsHost || SessionState != eCoopState_Connecting)
 	{
 		return;
 	}
+	Say("Session: connected to the host");
 	SetState(eCoopState_Checking);
 	SendCompat();
 }
@@ -633,13 +572,17 @@ function HandleConnectionClosed(int ConnectionIdx)
 		case eCoopState_Ready:
 		case eCoopState_SendingCampaign:
 		case eCoopState_InCampaign:
-			// Keep the lobby open so the host can invite again.
+			// Keep the lobby open so the host can invite again. The state changes first and the
+			// server starts again later: StartServer disconnects, the game then reports this
+			// closed connection once more, and calling it from here looped until the game
+			// crashed (22.11.2026, when the host quit the game). The timer also never fires
+			// while the game shuts down.
 			StopMirroring();
 			Notices.AddItem(Repl(strPlayerLeft, "%PLAYER", OtherName()));
 			OtherPlayerName = "";
 			bCompatSent = false;
-			StartServer();
 			SetState(eCoopState_WaitingForPlayer);
+			class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.ServerRestartDelaySeconds, false, nameof(RestartServer), self);
 			break;
 		default:
 			break;
@@ -914,7 +857,7 @@ function HandleReceiveHistory(XComGameStateHistory InHistory, X2EventManager Eve
 	}
 
 	// Give the confirmation a moment to go out before the map load.
-	class'Engine'.static.GetCurrentWorldInfo().SetTimer(class'XComCoop_Config'.default.CampaignLoadDelaySeconds, false, nameof(EnterCampaign), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.CampaignLoadDelaySeconds, false, nameof(EnterCampaign), self);
 }
 
 /// Client: loads the Avenger from the received campaign, as if loading a save.
@@ -972,9 +915,9 @@ function OnLoadedToStrategy()
 	}
 	// The load itself adds a few game states. The guard drops them once the Avenger is up
 	// and then tells the host, which starts sending changes.
-	class'WorldInfo'.static.GetWorldInfo().SetTimer(class'XComCoop_Config'.default.MirrorGuardSeconds, true, nameof(MirrorGuard), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.MirrorGuardSeconds, true, nameof(MirrorGuard), self);
 	// Only the host runs time; keep the client's Geoscape stopped.
-	class'WorldInfo'.static.GetWorldInfo().SetTimer(class'XComCoop_Config'.default.ClientTimeFreezeSeconds, true, nameof(FreezeClientTime), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.ClientTimeFreezeSeconds, true, nameof(FreezeClientTime), self);
 }
 
 /// Host: the client confirms what arrived.
@@ -1043,26 +986,26 @@ function StartMirroring()
 	bAwaitingMirrorAck = false;
 	ClockYear = 0;
 	MoversInFlight.Length = 0;
-	class'WorldInfo'.static.GetWorldInfo().SetTimer(class'XComCoop_Config'.default.MirrorClockSeconds, true, nameof(MirrorClock), self);
-	class'WorldInfo'.static.GetWorldInfo().SetTimer(class'XComCoop_Config'.default.MirrorMoverSeconds, true, nameof(MirrorMovers), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.MirrorClockSeconds, true, nameof(MirrorClock), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.MirrorMoverSeconds, true, nameof(MirrorMovers), self);
 	Say("Session: mirroring started");
 }
 
 /// Both: stop sending (host) or throwing away own game states (client).
 function StopMirroring()
 {
-	local WorldInfo WI;
+	local XComCoop_Timers TimerActor;
 
 	`XCOMHISTORY.UnRegisterOnNewGameStateDelegate(HandleNewGameState);
-	WI = class'WorldInfo'.static.GetWorldInfo();
-	if (WI != none)
+	TimerActor = class'XComCoop_Timers'.static.Find(false);
+	if (TimerActor != none)
 	{
-		WI.ClearTimer(nameof(MirrorSend), self);
-		WI.ClearTimer(nameof(MirrorGuard), self);
-		WI.ClearTimer(nameof(MirrorClock), self);
-		WI.ClearTimer(nameof(MirrorMovers), self);
-		WI.ClearTimer(nameof(FreezeClientTime), self);
-		WI.ClearTimer(nameof(ResendWhenReady), self);
+		TimerActor.ClearTimer(nameof(MirrorSend), self);
+		TimerActor.ClearTimer(nameof(MirrorGuard), self);
+		TimerActor.ClearTimer(nameof(MirrorClock), self);
+		TimerActor.ClearTimer(nameof(MirrorMovers), self);
+		TimerActor.ClearTimer(nameof(FreezeClientTime), self);
+		TimerActor.ClearTimer(nameof(ResendWhenReady), self);
 	}
 	MoversInFlight.Length = 0;
 	MoverLerps.Length = 0;
@@ -1089,12 +1032,9 @@ function HandleNewGameState(XComGameState NewGameState)
 /// Host: send after a short delay, so a burst of game states goes out as one update.
 function ScheduleMirrorSend()
 {
-	local WorldInfo WI;
-
-	WI = class'WorldInfo'.static.GetWorldInfo();
-	if (!WI.IsTimerActive(nameof(MirrorSend), self))
+	if (!class'XComCoop_Timers'.static.IsScheduled(nameof(MirrorSend), self))
 	{
-		WI.SetTimer(class'XComCoop_Config'.default.MirrorSendDelaySeconds, false, nameof(MirrorSend), self);
+		class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.MirrorSendDelaySeconds, false, nameof(MirrorSend), self);
 	}
 }
 
@@ -1610,7 +1550,7 @@ function ResendWhenStrategyRuns()
 	StopMirroring();
 	bClientLoading = true;
 	bResendWhenReady = true;
-	class'WorldInfo'.static.GetWorldInfo().SetTimer(class'XComCoop_Config'.default.MirrorGuardSeconds, true, nameof(ResendWhenReady), self);
+	class'XComCoop_Timers'.static.Schedule(class'XComCoop_Config'.default.MirrorGuardSeconds, true, nameof(ResendWhenReady), self);
 }
 
 function ResendWhenReady()
@@ -1619,7 +1559,7 @@ function ResendWhenReady()
 	{
 		return;
 	}
-	class'WorldInfo'.static.GetWorldInfo().ClearTimer(nameof(ResendWhenReady), self);
+	class'XComCoop_Timers'.static.Cancel(nameof(ResendWhenReady), self);
 	bResendWhenReady = false;
 	if ((SessionState == eCoopState_InCampaign || SessionState == eCoopState_SendingCampaign) && class'XComCoop_Util'.static.IsConnected())
 	{
@@ -1660,7 +1600,7 @@ function OnPopupShown(X2StrategyGameRulesetDataStructures.DynamicPropertySet Pro
 	`log("Session: popup " $ PropertySet.PrimaryRoutingKey $ "/" $ PropertySet.SecondaryRoutingKey $ " queued for " $ OtherName(),, 'XComCoop');
 
 	// The changes that led to the popup go first; MirrorSend or HandleMirrorAck sends it then.
-	if (bMirrorDirty || bAwaitingMirrorAck || class'WorldInfo'.static.GetWorldInfo().IsTimerActive(nameof(MirrorSend), self))
+	if (bMirrorDirty || bAwaitingMirrorAck || class'XComCoop_Timers'.static.IsScheduled(nameof(MirrorSend), self))
 	{
 		return;
 	}
@@ -1962,9 +1902,8 @@ function Reset()
 
 	SessionState = eCoopState_Idle;
 	bIsHost = false;
-	bInLobby = false;
+	bHosting = false;
 	bCompatSent = false;
-	LobbyId = EmptyId;
 	HostId = EmptyId;
 	OtherPlayerName = "";
 	Problems.Length = 0;

@@ -101,8 +101,9 @@ function OnCoopClicked(UIButton Button)
 	{
 		return;
 	}
+	// The main menu is for joining: the screen lists friends to join. The host opens CO-OP
+	// from the pause menu on the Avenger, where the campaign is.
 	class'XComCoop_UILobby'.static.Open();
-	class'XComCoop_Session'.static.Get().Host();
 }
 
 defaultproperties

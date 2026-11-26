@@ -29,6 +29,7 @@ Reserveplanen (hjelpeapp via `TcpLink`) trengs trolig ikke. `IpDrv\Classes\TcpLi
 | `SendLobbyMessage` / `SendLobbyBinaryData` + `OnLobbyReceive*` | 513 / 521 | Små meldinger via lobbyen |
 | `SetLobbyServer(LobbyId, ServerUID, IP)` + `OnLobbyJoinGame` | 909 / 812 | Forteller klienten hvem som er vert |
 | `SendP2PData` / `ReadP2PData` / `AcceptP2PSessionWithUser` | 283–288 | Rå Steam P2P, uten noe XCOM-lag |
+| `AllowP2PPacketRelay(bAllow, bForceClient)` | 287 | **Må slås på** før tilkobling (spillet slår reléet av, se nederst) |
 | `SetLobbyOwner` | 938 | Ny vert, f.eks. ved bytte av hvem som hoster |
 
 Flyten Firaxis selv brukte er beskrevet i en kommentar i `XComGame\Classes\XComCheatManager.uc:3766-3789`:
@@ -292,3 +293,105 @@ trolig aldri brukt med to medlemmer.
 Løsning: klienten blir ikke med i lobbyen. `OnLobbyInvite` gir både lobbyen og hvem som sendte invitasjonen, og
 klienten kobler rett til avsenderen. Verten bruker lobbyen bare til `InviteToLobby`. Godtas invitasjonen i
 Steam-overlayet, kan Steam selv melde klienten inn i lobbyen; bruk derfor dialogen i spillet.
+
+## Klienten koblet aldri til: tidtakerne gikk aldri av (22.11.2026)
+
+Etter krasjfiksen kom klienten forbi invitasjonen, men ble aldri koblet til. Nøyaktig 60 sekunder etter `CreateClient`
+kom `OnPlayerLeft` med tom ID, og spillet viste «opponent left». Det er `InitialConnectTimeout=60` under
+`[IpDrv.TcpNetDriver]` i spillets `DefaultEngine.ini`. Verten så ingen tilkobling, heller ikke med `unsuppress DevNet`.
+
+Årsak: klienten ba aldri verten om tilkobling. `CreateClient` sender ingenting alene. Spillet sender forespørselen
+med `ForceConnectionAttempt` (`XComShellPresentationLayer.OnSteamClientTimer`). Vi kalte den fra en tidtaker på
+`WorldInfo`, og `WorldInfo` har `bTickIsDisabled=true` i XCOM 2 (siste linje i `defaultproperties` i
+`Engine\Classes\WorldInfo.uc`). En actor som ikke tikker, kjører ikke tidtakerne sine. Ingen av tidtakerne våre hadde
+noen gang gått av, heller ikke de i speilingen i fase 2. `CoopNetJoin` viste det samme: verken «connection attempt» eller
+«no answer from the host» kom i konsollen.
+
+Løsning: `XComCoop_Timers`, en usynlig `Info`-actor som lages i det gjeldende kartet første gang en tidtaker trengs.
+Tidtakerne peker fra den til det varige objektet og forsvinner med kartet, slik tidtakere på andre actors gjør.
+
+Andre funn samme kveld:
+- **Steam P2P virker fra klienten til verten.** Med `unsuppress DevOnline` logget verten
+  `UOnlineGameInterfaceXCom::ReadP2PData - <klientens ID> MessageSize: 1` for en pakke klienten sendte med `CoopP2PSend`.
+  Retningen fra verten til klienten er ikke sjekket.
+- **`ReadP2PData` gir ikke dataene videre til UnrealScript.** `CoopP2PRead` skrev «nothing received» samtidig som spillet
+  logget pakken over. Det er Firaxis' egen feilsøkingsfunksjon; bare loggen kan stoles på.
+- **Tjeneren lytter som Steam-spillserveren fra lobbyen.** Når lobbyen er laget (`OnSteamLobbyCreated`), starter
+  spillet en Steam-spillserver («Initializing Steam game server») og så «Initializing game server P2P sockets». Fra da
+  av lytter tjeneren som spillserveren, også om den ble startet før lobbyen. Spillserveren får sin egen Steam-ID
+  under ett sekund senere («Steam game server UID»), og bare første gang i hver spilløkt står den i loggen.
+  Test samme kveld: med tjeneren startet før lobbyen nådde klientens 10 forsøk mot vertens egen ID aldri fram
+  (ingen linje hos verten). `CoopNetJoin <spillserverens ID>` koblet til med en gang: verten logget
+  `OnP2PSessionRequest_Server` og `NotifyAcceptedConnection`. Steam-trafikken går altså begge veier, og Firaxis' egen
+  lobbyflyt gjør det samme (klienten kobler til spillserverens ID: `MPSetLobbyServer`, `OnLobbyJoinGame`).
+- Da tjeneren ble startet etter lobbyen, mens spillserveren ennå ikke hadde ID, lukket den ved avslutning P2P-økter med
+  `72057594037927936` (`0x0100000000000000`, en ID uten konto). En tjener uten lobby (`CoopNetHost`) lukket ingen.
+  Verten starter derfor fortsatt tjeneren før lobbyen; det er den rekkefølgen som er testet.
+
+**Forsøk med lobbydata (forkastet samme kveld).** Verten skulle skrive spillserverens ID i lobbydataene, og klienten
+skulle finne lobbyen med `FindLobbies`. Begge deler feilet mellom to PC-er:
+- `OnlineGameInterfaceXCom.CurrentGameServerId` og `OnlineAuthInterfaceSteamworks.GetServerUniqueId` ga aldri
+  spillserverens ID, selv om loggen viste den («Steam game server UID»). Skriptet får ikke tak i den.
+- `FindLobbies` med filter på vertens ID fant 0 lobbyer, også med lobbytypen `XLV_Invisible` (loggen: «Creating lobby of
+  type 3»).
+
+**Tre tester uten nytt bygg avgjorde saken:**
+1. `CoopMyId` hos verten med lobbyen oppe viste ingen spillserver-ID.
+2. Verten forlot lobbyen og startet `CoopNetHost`. Klienten (`CoopNetJoin <vertens ID>`) fikk ikke svar på 10 forsøk.
+   Spillserveren blir værende til spillet lukkes.
+3. Klienten startet `CoopNetHost`, og verten (med spillserver) kjørte `CoopNetJoin <klientens ID>`. Det fikk heller ikke
+   svar. Med spillserver når spillet ingen, verken inn eller ut.
+
+**Beslutning:** ingen Steam-lobbyer. Verten starter bare tjeneren og nås på sin egen Steam-ID. Invitasjonen er en
+Steam-chatmelding (`OnlinePlayerInterface.SendMessageToFriend`) som begynner med `[XComCoop invite]`. Spillet til vennen
+fanger den opp med `OnFriendMessageReceived` og viser JOIN-spørsmålet. Kommer meldingen ikke fram, kan vennen åpne CO-OP i
+hovedmenyen og klikke på verten i vennelisten. Ikke testet mellom to PC-er ennå: tilkobling til en vert som aldri har hatt
+spillserver, og om chatmeldingen når spillet til vennen.
+
+**Ved brudd kastes klienten til flerspillermenyen.** Da en klienttilkobling feilet i test 3, logget spillet «Can't destroy
+a null online session», og `XComPlayerController.OnDestroyedOnlineGame` → `XComOnlineEventMgr.ReturnToMPMainMenu` sendte
+spilleren til hovedmenyen. Det skjer selv om moden har en `OnNotifyConnectionClosed`-delegat. Det må håndteres før
+klienten kan miste forbindelsen på Avengeren uten å bli kastet ut (fase 7).
+
+**Krasj når en tilkobling lukkes hos verten.** Da verten avsluttet spillet med en klient tilkoblet, krasjet det etter
+254 runder med «connection closed». `HandleConnectionClosed` kalte `StartServer`, og den kobler fra først. Spillet melder
+da den samme lukkede tilkoblingen på nytt, og det gikk i ring til stakken var full. Det samme ville skjedd hver gang
+klienten gikk. Nå bytter verten tilstand først, og starter tjeneren på nytt fra en tidtaker
+(`ServerRestartDelaySeconds`). Klientens gren hadde ikke feilen, for `Leave` bytter tilstand før den kobler fra.
+**Regel:** kall aldri `Disconnect`, eller noe som kobler fra, inne i `OnNotifyConnectionClosed` uten å bytte tilstand
+først.
+
+## Spillet slår av Steams relé: tilkoblingen nådde aldri verten (22.11.2026)
+
+Test samme kveld med bygget uten lobby: ingen av maskinene hadde spillserver. Verten hadde CO-OP åpen (tjeneren lyttet
+på port 7777), og klienten klikket på verten i hovedmenyen. Etter 10 forsøk kom «Could not connect to the host». Verten
+hadde `unsuppress DevNet` og `unsuppress DevOnline`, og loggen viste ingenting fra klienten, heller ikke
+`OnP2PSessionRequest_Client`. Forespørselen nådde aldri Steam hos verten.
+
+Funn i `XCom2.exe` (strenger og maskinkode lest med `dumpbin /disasm` fra Visual Studio):
+- **`UOnlineGameInterfaceXCom::OnP2PSessionRequest_Client` godtar alle forespørsler.** Etter logglinjen kaller den
+  `SteamNetworking()->AcceptP2PSessionWithUser(RemoteId)` uten noen sjekk. Godkjenning er altså ikke problemet, og
+  `CoopP2PAccept` trengs ikke.
+- **Steam-oppstarten slår av reléet.** Funksjonen som logger «Logged in as», «Steam Cloud quota» og lignende ved
+  oppstart, ender med `SteamNetworking()->AllowP2PPacketRelay(false)` (VA `0x140A571AC` i bygget som er installert nå).
+  Steams standard er at relé er på. Uten relé når to spillere hverandre bare hvis ruterne slipper en direkte
+  forbindelse gjennom (NAT traversal), og det feilet mellom de to hjemmenettene våre.
+- `OnlineGameInterfaceXCom.AllowP2PPacketRelay(bAllow, bForceClient)` gjelder spillserveren hvis det finnes en og
+  `bForceClient` er `false`, ellers spillerens egen Steam-forbindelse. Spillserveren slår aldri av reléet. Det forklarer
+  hvorfor `CoopNetJoin <spillserverens ID>` koblet til med en gang, mens alle forsøk mot en spillers egen ID feilet.
+- I test 3 (verten koblet til klientens egen ID) logget verten etter et par minutter
+  `OnP2PSessionConnectFail_Client ... Error: 4`. Det er `k_EP2PSessionErrorTimeout`: motparten svarte ikke.
+- Den rå pakken i fase 0-test 1 kom trolig fram fordi begge hadde sendt til hverandre. Da kan ruterne slippe en direkte
+  forbindelse gjennom.
+
+**Løsning:** `XComCoop_Util.SetSteamRelay` kaller `AllowP2PPacketRelay(true, true)` før `CreateServer` og
+`CreateClient` (også i `CoopNetHost`/`CoopNetJoin`), og `Leave` slår det av igjen, så spillets egen flerspiller er
+som før. Styres av `bAllowSteamRelay` i `XComCoop.ini`. Steam bruker innstillingen for forbindelser som lages etter
+kallet. Ikke testet mellom to PC-er ennå.
+
+**Chat-invitasjonen virker ikke.** `OnlinePlayerInterface.SendMessageToFriend` åpner bare Steam-chatten med vennen i
+overlayet (loggen: «Steam GameOverlayActivated: TRUE») og sender ingenting. Vennen fikk aldri meldingen. Steam-status
+(rich presence, `SetOnlineStatus`) er ikke noe alternativ nå, for spillet setter sin egen status ved hvert kartbytte
+(`XComOnlineEventMgr.SetOnlineStatus`). Spillets egne invitasjoner (`SendGameInviteToFriend`, `JoinFriendGame`) bærer
+spillserverens adresse, men en godtatt invitasjon går gjennom `XComOnlineEventMgr.OnGameInviteAccepted`, som
+kobler fra og sender spilleren til flerspillermenyen.
