@@ -65,6 +65,7 @@ var localized string strMirrorStatsHost;
 var localized string strMirrorStatsClient;
 var localized string strConnectionOpen;
 var localized string strConnectionClosed;
+var localized string strLocalTest;
 var localized string strHost;
 var localized string strPlayer2;
 var localized string strYou;
@@ -170,6 +171,10 @@ simulated function Refresh()
 	Header.SetText(strTitle, Session.bIsHost ? strHostSubtitle : strClientSubtitle);
 
 	Text = StateText(Session);
+	if (Session.bLocalNet)
+	{
+		Text $= "<br>" $ class'UIUtilities_Text'.static.GetColoredText(strLocalTest, eUIState_Warning);
+	}
 
 	// Players
 	MyName = class'XComCoop_Util'.static.GetMyName() $ " (" $ strYou $ ")";

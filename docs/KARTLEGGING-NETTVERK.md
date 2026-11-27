@@ -395,3 +395,45 @@ overlayet (loggen: «Steam GameOverlayActivated: TRUE») og sender ingenting. Ve
 (`XComOnlineEventMgr.SetOnlineStatus`). Spillets egne invitasjoner (`SendGameInviteToFriend`, `JoinFriendGame`) bærer
 spillserverens adresse, men en godtatt invitasjon går gjennom `XComOnlineEventMgr.OnGameInviteAccepted`, som
 kobler fra og sender spilleren til flerspillermenyen.
+
+## To kopier av spillet på samme PC (27.11.2026)
+
+- XCom2.exe har Unreal Engine 3s vanlige oppsett for en ekstra kopi: en mutex `UnrealEngine3_%d%s` og bryteren
+  `-NEVERFIRST`. Den andre kopien skriver loggen til `Launch_2.log`. Ingenting i koden stopper den.
+- XCom2.exe sjekker ikke `-FROMLAUNCHER`, og `steam_appid.txt` ligger i `Binaries\Win64`. Den andre kopien kan
+  derfor startes rett fra exe-filen.
+- Begge kopiene bruker samme Steam-konto, og Steam kobler ikke en konto til seg selv. Steam sockets og reléet kan
+  derfor ikke testes slik.
+- Spillets nettverk kan også gå over vanlig IP. Firaxis' `MPCreateServer` og `MPCreateClient` (`XComCheatManager`)
+  legger bare til `steamsockets` når man ber om Steam.
+- Moden har derfor `CoopHostLocal` og `CoopJoinLocal`. De kobler over IP til `LocalTestAddress` (127.0.0.1), eller
+  til adressen `CoopJoinLocal` får. Alt etter tilkoblingen går gjennom den samme koden som over Steam. Med to kopier
+  på samme PC er de ikke prøvd ennå. Mellom to PC-er over et VPN virket de (se under).
+
+## Test over Hamachi mellom to PC-er (27.11.2026)
+
+Tilkoblingen over Steam ble ikke prøvd på nytt med relébygget. Vi visste ikke hvilket bygg vennen hadde. I stedet
+koblet vi over Hamachi, et VPN som gir hver PC en adresse som begynner med 25. Verten skrev `CoopHostLocal`, og
+klienten skrev `CoopJoinLocal <vertens Hamachi-adresse>`.
+
+- Tilkoblingen virket begge veier. Først måtte brannmuren hos verten slippe inn `XCom2.exe` på offentlige nettverk:
+  Windows regner Hamachi som et offentlig nettverk, og spørsmålet fra brannmuren har bare «private» krysset av.
+- Versjonssjekken ga ingen advarsler.
+- Kampanjen (312 KB, 1536 tilstander) kom fram med likt fingeravtrykk, bekreftet etter 0,6 sekunder.
+- Forbindelsen overlevde at klienten lastet Avengeren.
+- Speilingen virket. Oppdateringene fra verten ble brukt, og klientens egne endringer ble angret.
+- Hendelseslisten, snarveislinjen og gjøremålslisten hos klienten tegnes ikke på nytt etter en oppdatering. Endringen
+  vises først når klienten åpner skjermen, for eksempel laboratoriet.
+
+## Klienten krasjet da den lastet Avengeren (27.11.2026)
+
+Minnedumpen viste en tilgangsfeil i `XComOnlineEventMgr.FinishLoadGame` (native). `XComHeadquartersGame.StartMatch`
+kaller den når `bPerformingStandardLoad` er satt, og det gjør klienten for å laste Avengeren som en lagring.
+
+- `FinishLoadGame` slår opp i spillets buffer av innleste lagringer med `LoadGameContentCacheIndex`, uten å sjekke
+  indeksen. Vanligvis setter `LoadGame` den, og der blir den sjekket. Når `FinishLoadGame` er ferdig, setter den
+  indeksen til -1.
+- Klienten kaller ikke `LoadGame`. I et nystartet spill er indeksen 0, og det gikk bra (fase 0, test 4). Har spilleren
+  lastet en lagring tidligere i samme økt, er indeksen -1. Da leser `FinishLoadGame` utenfor bufferen og krasjer.
+- Løsning: moden setter `LoadGameContentCacheIndex` til 0 før klienten laster Avengeren. Inntil det er gjort, må
+  klienten starte spillet på nytt og ikke laste noen lagring før den kobler til.

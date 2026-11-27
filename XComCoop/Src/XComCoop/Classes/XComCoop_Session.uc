@@ -12,6 +12,10 @@
 //  No Steam lobbies (see Host): creating one starts a Steam game server that takes over the
 //  game's Steam sockets until the game is closed, and its ID cannot be read from script.
 //
+//  Local test (CoopHostLocal / CoopJoinLocal): two copies of the game on one PC. Both use the
+//  same Steam account, and Steam cannot connect an account to itself, so the connection goes
+//  over plain IP (LocalTestAddress). Everything after the connection is the same as over Steam.
+//
 //  Phase 2, first step (the client gets a copy of the host's campaign):
 //  Host on the Avenger, Ready: StartCampaign() -> announce fingerprint -> SendHistory
 //  Client: history arrives (it replaces XCOMHISTORY) -> confirm with its fingerprint ->
@@ -104,6 +108,8 @@ var bool bNetDelegatesAdded;
 var bool bCompatSent;
 var bool bHosting;                  // host: the server is up and invites can go out
 var int ConnectAttemptsLeft;
+var bool bLocalNet;                 // local test: plain IP instead of Steam (see HostLocal)
+var string LocalHostAddress;        // client, local test: where the host copy listens
 
 // Phase 2: handing over the campaign
 var string SentFingerprint;         // host
@@ -241,7 +247,8 @@ function AddNetDelegates()
 /// creating one starts a Steam game server, and from then until the game is closed the
 /// game's Steam sockets go through that game server, both in and out. Its ID cannot be read
 /// from script, so the other player could not find it. Invites go as Steam chat messages.
-function Host()
+/// bLocal: local test over plain IP (see HostLocal).
+function Host(optional bool bLocal)
 {
 	if (IsActive())
 	{
@@ -251,6 +258,7 @@ function Host()
 	Init();
 
 	bIsHost = true;
+	bLocalNet = bLocal;
 	class'XComCoop_Util'.static.GetMyId(HostId);
 	if (!StartServer())
 	{
@@ -276,6 +284,36 @@ function Join(UniqueNetId InHostId)
 	HostId = InHostId;
 	OtherPlayerName = class'XComCoop_Util'.static.GetFriendName(HostId);
 	Say("Session: joining " $ OtherName());
+	Connect();
+}
+
+/// Test only (CoopHostLocal): hosts for a second copy of the game on this PC. Both copies use
+/// the same Steam account, and Steam cannot connect an account to itself, so the connection
+/// goes over plain IP.
+function HostLocal()
+{
+	if (IsActive())
+	{
+		Say("Session: already in a session (" $ StateName() $ "). Press LEAVE first.");
+		return;
+	}
+	Host(true);
+}
+
+/// Test only (CoopJoinLocal): joins the host copy over plain IP at Address.
+function JoinLocal(string Address)
+{
+	if (IsActive())
+	{
+		Leave();
+	}
+	Reset();
+	Init();
+
+	bIsHost = false;
+	bLocalNet = true;
+	LocalHostAddress = Address;
+	Say("Session: joining the host at " $ Address $ " (local test over IP)");
 	Connect();
 }
 
@@ -455,7 +493,7 @@ function bool StartServer()
 {
 	local XComGameStateNetworkManager NetMgr;
 	local URL ServerURL;
-	local string Error;
+	local string Error, Mode;
 
 	NetMgr = `XCOMNETMANAGER;
 	if (NetMgr.HasServerConnection() || NetMgr.HasClientConnection())
@@ -463,12 +501,21 @@ function bool StartServer()
 		NetMgr.Disconnect();
 	}
 	AddNetDelegates();
-	// Before the server exists, so the client's connection can use Steam's relay.
-	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
 	ServerURL.Port = class'XComCoop_Config'.default.NetPort;
-	ServerURL.Op.AddItem("steamsockets");
+	if (bLocalNet)
+	{
+		// Plain IP: without "steamsockets" the game's net driver listens on a normal UDP port.
+		Mode = "(local test over IP)";
+	}
+	else
+	{
+		// Before the server exists, so the client's connection can use Steam's relay.
+		class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
+		ServerURL.Op.AddItem("steamsockets");
+		Mode = "relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay;
+	}
 	NetMgr.CreateServer(ServerURL, Error);
-	Say("Session: server on port " $ ServerURL.Port $ " relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay $ " error='" $ Error $ "'");
+	Say("Session: server on port " $ ServerURL.Port $ " " $ Mode $ " error='" $ Error $ "'");
 	return Error == "";
 }
 
@@ -489,7 +536,7 @@ function Connect()
 {
 	local XComGameStateNetworkManager NetMgr;
 	local URL ClientURL;
-	local string Error;
+	local string Error, Mode;
 
 	NetMgr = `XCOMNETMANAGER;
 	if (NetMgr.HasServerConnection() || NetMgr.HasClientConnection())
@@ -497,15 +544,24 @@ function Connect()
 		NetMgr.Disconnect();
 	}
 	AddNetDelegates();
-	// Straight to the host's own Steam ID. That only works because nobody makes a Steam
-	// lobby (see Host), and with Steam's relay on (see XComCoop_Util.SetSteamRelay).
-	class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
-	ClientURL.Host = class'XComCoop_Util'.static.IdToSteamAddress(HostId);
+	if (bLocalNet)
+	{
+		ClientURL.Host = LocalHostAddress;
+		Mode = "(local test over IP)";
+	}
+	else
+	{
+		// Straight to the host's own Steam ID. That only works because nobody makes a Steam
+		// lobby (see Host), and with Steam's relay on (see XComCoop_Util.SetSteamRelay).
+		class'XComCoop_Util'.static.SetSteamRelay(class'XComCoop_Config'.default.bAllowSteamRelay);
+		ClientURL.Host = class'XComCoop_Util'.static.IdToSteamAddress(HostId);
+		ClientURL.Op.AddItem("steamsockets");
+		Mode = "relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay;
+	}
 	ClientURL.Port = class'XComCoop_Config'.default.NetPort;
-	ClientURL.Op.AddItem("steamsockets");
 	SetState(eCoopState_Connecting);
 	NetMgr.CreateClient(ClientURL, Error);
-	Say("Session: connecting to " $ ClientURL.Host $ ":" $ ClientURL.Port $ " relay=" $ class'XComCoop_Config'.default.bAllowSteamRelay $ " error='" $ Error $ "'");
+	Say("Session: connecting to " $ ClientURL.Host $ ":" $ ClientURL.Port $ " " $ Mode $ " error='" $ Error $ "'");
 	if (Error != "")
 	{
 		Fail(strConnectFailed);
@@ -1905,6 +1961,8 @@ function Reset()
 	bHosting = false;
 	bCompatSent = false;
 	HostId = EmptyId;
+	bLocalNet = false;
+	LocalHostAddress = "";
 	OtherPlayerName = "";
 	Problems.Length = 0;
 	Warnings.Length = 0;

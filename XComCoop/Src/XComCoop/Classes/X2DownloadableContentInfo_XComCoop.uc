@@ -48,6 +48,31 @@ exec function CoopCompatInfo()
 	}
 }
 
+/// Test with two copies of the game on one PC (both on the same Steam account): hosts over
+/// plain IP instead of Steam. Run it on the Avenger; CoopJoinLocal in the other copy joins.
+exec function CoopHostLocal()
+{
+	class'XComCoop_UILobby'.static.Open();
+	class'XComCoop_Session'.static.Get().HostLocal();
+}
+
+/// The other copy, in the main menu: joins the host copy over plain IP. Without an address it
+/// uses LocalTestAddress from XComCoop.ini (this PC).
+exec function CoopJoinLocal(optional string Address)
+{
+	if (!class'XComCoop_Util'.static.IsInShell())
+	{
+		Say("CoopJoinLocal: only from the main menu");
+		return;
+	}
+	if (Address == "")
+	{
+		Address = class'XComCoop_Config'.default.LocalTestAddress;
+	}
+	class'XComCoop_UILobby'.static.Open();
+	class'XComCoop_Session'.static.Get().JoinLocal(Address);
+}
+
 /// Prints to the console window and to Launch.log (tag XComCoop).
 static function Say(string Msg)
 {

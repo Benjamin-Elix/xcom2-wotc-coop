@@ -23,6 +23,7 @@ var config float            ConnectRetrySeconds;
 var config int              ConnectAttempts;
 var config float            ServerRestartDelaySeconds;
 var config bool             bAllowSteamRelay;           // see XComCoop_Util.SetSteamRelay
+var config string           LocalTestAddress;           // CoopJoinLocal: where the host copy listens
 var config float            HeartbeatIntervalSeconds;
 var config float            DisconnectTimeoutSeconds;
 var config float            ReconnectWindowSeconds;     // 0 = no limit

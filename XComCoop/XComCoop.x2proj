@@ -9,8 +9,8 @@
     <RootNamespace>XComCoop</RootNamespace>
     <ProjectGuid>{2156D070-D4A3-4613-84A1-15630A7A1C6B}</ProjectGuid>
     <SteamPublishID>3842636042</SteamPublishID>
-    <Title>XCOM 2 WotC Co-op</Title>
-    <Description>TEST BUILD - work in progress, not playable yet. Co-op campaign and tactical play for XCOM 2: War of the Chosen. Requires X2WOTCCommunityHighlander.</Description>
+    <Title>XCOM 2 WotC Co-op [ALPHA - Phase 2 of 7: shared campaign]</Title>
+    <Description>ALPHA TEST BUILD, not a finished co-op mod yet. Where we are: Phase 1 (connect, check versions and mods) works over IP, for example through a VPN such as Hamachi. Connecting through Steam is still in progress. Phase 2 (the host's campaign is copied to a friend, who watches it live) works between two PCs and is being polished. Next: Phase 3 (both players change the campaign), then missions and tactical co-op. Requires X2WOTCCommunityHighlander.</Description>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <OutputPath>bin\Debug\</OutputPath>

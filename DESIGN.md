@@ -121,6 +121,12 @@ Lobby, invitasjon, sjekk av mods og versjon.
   4. Begge sender `XComCoop_CompatInfo`. Svaret er «klar», eller en liste over hva som er feil.
   5. All spilltrafikk går gjennom `XComGameStateNetworkManager`.
 - Invitasjoner tas bare imot i hovedmenyen i fase 1. Oppstart av spillet fra en Steam-invitasjon kommer i fase 7.
+- Lokal test med to kopier av spillet på samme PC: `CoopHostLocal` i kopien som er vert (på Avengeren) og
+  `CoopJoinLocal` i den andre (i hovedmenyen). Begge kopiene bruker samme Steam-konto, og Steam kobler ikke en
+  konto til seg selv, så de kobler over vanlig IP (`LocalTestAddress`). Alt etter tilkoblingen er likt.
+  Kommandoene virker også mellom to PC-er over et VPN som Hamachi (testet 27.11.2026), med `CoopJoinLocal <adresse>`.
+  Verten må slippe inn XCom2.exe på offentlige nettverk i Windows-brannmuren. Tilkoblingen over Steam og reléet må
+  fortsatt testes mellom to PC-er.
 
 ### Fase 2: Strategisynk én vei
 Verten sender, klienten speiler.
@@ -159,8 +165,11 @@ Verten sender, klienten speiler.
 - Speilingen gjelder strategi. Går verten på oppdrag (`OnPreMission`), får klienten beskjed og speilingen stopper. Når
   verten er tilbake (`OnExitPostMissionSequence`) eller laster en annen lagring, sendes hele kampanjen på nytt.
   Klienten kan ikke åpne troppvalget, for et oppdrag hos klienten ville laste et nytt kart og ikke kunne angres.
-- Ukjent til testen med to PC-er: om forbindelsen overlever at klienten laster et nytt kart. Spillets egen flerspiller
-  holder forbindelsen når begge åpner taktisk kart (`UIMPShell_Lobby.LoadTacticalMap`), så det er trolig.
+- Testet 27.11.2026 mellom to PC-er over Hamachi. Kampanjen kom fram uendret, forbindelsen overlevde at klienten lastet
+  Avengeren, og speilingen virket. To feil gjenstår (se [docs/KARTLEGGING-NETTVERK.md](docs/KARTLEGGING-NETTVERK.md)):
+  - Klienten krasjer i `FinishLoadGame` hvis den har lastet en lagring tidligere i samme økt. Moden må sette
+    `ONLINEEVENTMGR.LoadGameContentCacheIndex` før innlastingen.
+  - Hendelseslisten, snarveislinjen og gjøremålslisten tegnes ikke på nytt etter en oppdatering.
 
 ### Fase 3: Strategisynk begge veier
 Deltaer fra begge, objektversjoner, konflikthåndtering, myke låser.
